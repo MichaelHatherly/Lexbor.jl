@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  merge_group:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags: "*"
+
+concurrency:
+  # Skip intermediate builds: all builds except for builds on the `master` branch
+  # Cancel intermediate builds: only pull request builds
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref != 'refs/heads/main' || github.run_number }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  finalize:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: needs.test.result == 'failure' || needs.test.result == 'skipped'
+
+  test:
+    permissions:
+      actions: write
+      contents: read
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ github.event_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - "1.6"
+          - "1.11"
+          - "nightly"
+        os:
+          - ubuntu-latest
+          - macOS-13
+          - macOS-latest
+          - windows-latest
+        exclude:
+          - version: "1.6"
+            os: windows-latest
+          - version: "1.6"
+            os: macOS-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+
+      - uses: julia-actions/cache@v2
+
+      - uses: julia-actions/julia-buildpkg@v1
+
+      - uses: julia-actions/julia-runtest@v1
+        continue-on-error: ${{ matrix.version == 'nightly' }}

@@ -1,0 +1,15 @@
+name = "Lexbor"
+uuid = "7c3807c3-6380-4629-8731-66194421aa0a"
+authors = ["MichaelHatherly <michaelhatherly@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+CEnum = "fa961155-64e5-5f13-b03f-caf6b980ea82"
+lexbor_jll = "be8d7a73-1782-5ce7-96ff-8fff21e5e970"
+
+[compat]
+AbstractTrees = "0.4"
+CEnum = "0.5"
+lexbor_jll = "= 2.3.0"
+julia = "1.6"
