@@ -5046,6 +5046,20 @@ struct lxb_css_selector_anb_of_t
     of::Ptr{lxb_css_selector_list_t}
 end
 
+function lxb_css_selector_list_destroy_memory(list)
+    @ccall liblexbor.lxb_css_selector_list_destroy_memory(
+        list::Ptr{lxb_css_selector_list_t},
+    )::Cvoid
+end
+
+function lxb_css_selector_serialize_list_chain(list, cb, ctx)
+    @ccall liblexbor.lxb_css_selector_serialize_list_chain(
+        list::Ptr{lxb_css_selector_list_t},
+        cb::lexbor_serialize_cb_f,
+        ctx::Ptr{Cvoid},
+    )::lxb_status_t
+end
+
 @cenum lxb_css_selector_pseudo_class_id_t::UInt32 begin
     LXB_CSS_SELECTOR_PSEUDO_CLASS__UNDEF = 0
     LXB_CSS_SELECTOR_PSEUDO_CLASS_ACTIVE = 1
@@ -5132,6 +5146,14 @@ end
     LXB_CSS_SELECTOR_PSEUDO_ELEMENT_FUNCTION__LAST_ENTRY = 1
 end
 
+function lxb_css_selectors_parse(parser, data, length)
+    @ccall liblexbor.lxb_css_selectors_parse(
+        parser::Ptr{lxb_css_parser_t},
+        data::Ptr{lxb_char_t},
+        length::Csize_t,
+    )::Ptr{lxb_css_selector_list_t}
+end
+
 @cenum __JL_Ctag_246::UInt32 begin
     LXB_CSS_SYNTAX_PARSER_ERROR_UNDEF = 0
     LXB_CSS_SYNTAX_PARSER_ERROR_EOINATRU = 1
@@ -5143,6 +5165,24 @@ end
     LXB_CSS_SYNTAX_PARSER_ERROR_EOBEPACOVA = 7
     LXB_CSS_SYNTAX_PARSER_ERROR_UNTOAFPACOVA = 8
     LXB_CSS_SYNTAX_PARSER_ERROR_UNTOINDE = 9
+end
+
+function lxb_css_parser_create()
+    @ccall liblexbor.lxb_css_parser_create()::Ptr{lxb_css_parser_t}
+end
+
+function lxb_css_parser_init(parser, tkz)
+    @ccall liblexbor.lxb_css_parser_init(
+        parser::Ptr{lxb_css_parser_t},
+        tkz::Ptr{lxb_css_syntax_tokenizer_t},
+    )::lxb_status_t
+end
+
+function lxb_css_parser_destroy(parser, self_destroy)
+    @ccall liblexbor.lxb_css_parser_destroy(
+        parser::Ptr{lxb_css_parser_t},
+        self_destroy::Bool,
+    )::Ptr{lxb_css_parser_t}
 end
 
 @cenum lxb_css_syntax_tokenizer_error_id_t::UInt32 begin
@@ -5230,6 +5270,31 @@ function Base.getproperty(x::lxb_selectors_entry, f::Symbol)
 end
 
 const lxb_selectors_entry_t = lxb_selectors_entry
+
+function lxb_selectors_create()
+    @ccall liblexbor.lxb_selectors_create()::Ptr{lxb_selectors_t}
+end
+
+function lxb_selectors_init(selectors)
+    @ccall liblexbor.lxb_selectors_init(selectors::Ptr{lxb_selectors_t})::lxb_status_t
+end
+
+function lxb_selectors_destroy(selectors, self_destroy)
+    @ccall liblexbor.lxb_selectors_destroy(
+        selectors::Ptr{lxb_selectors_t},
+        self_destroy::Bool,
+    )::Ptr{lxb_selectors_t}
+end
+
+function lxb_selectors_find(selectors, root, list, cb, ctx)
+    @ccall liblexbor.lxb_selectors_find(
+        selectors::Ptr{lxb_selectors_t},
+        root::Ptr{lxb_dom_node_t},
+        list::Ptr{lxb_css_selector_list_t},
+        cb::lxb_selectors_cb_f,
+        ctx::Ptr{Cvoid},
+    )::lxb_status_t
+end
 
 @cenum lxb_html_document_opt::UInt32 begin
     LXB_HTML_DOCUMENT_OPT_UNDEF = 0
