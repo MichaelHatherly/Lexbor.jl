@@ -48,4 +48,19 @@ using AbstractTrees
         end
         @test is_tag[]
     end
+
+    let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+        nodes_all = Lexbor.query(doc, """div, div[id="ok"], div:has(:not(a))""")
+        nodes_first =
+            Lexbor.query(doc, """div, div[id="ok"], div:has(:not(a))"""; first = true)
+        @test length(nodes_all) == 3
+        @test length(nodes_first) == 1
+
+        node = only(nodes_first)
+        div_node = Lexbor.query(node, "div")
+        @test isempty(div_node)
+        div_node = Lexbor.query(node, "div"; root = true)
+        @test !isempty(div_node)
+        @test node == only(div_node)
+    end
 end

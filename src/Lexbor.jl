@@ -203,13 +203,50 @@ _is_null(node::Ptr{T}) where {T} = node === Ptr{T}()
 #
 
 """
-    query(document | node, selector) -> Node[]
-    query(f, document | node, selector) -> nothing
+    query(document | node, selector; first = false, root = false) -> Node[]
+    query(f, document | node, selector; first = false, root = false) -> nothing
 
 Query the `document` or `node` for the given CSS `selector`. When `f` is
 provided then call `f` on each match that is found and return `nothing` from
 `query`. When no `f` is provided then just return a `Vector{Node}` containing
 all matches.
+
+The `first::Bool` keyword controls whether to only match the first of a
+selector list. To quote the upstream documentation:
+
+> Stop searching after the first match with any of the selectors
+> in the list.
+>
+> By default, the callback will be triggered for each selector list.
+> That is, if your node matches different selector lists, it will be
+> returned multiple times in the callback.
+>
+> For example:
+> ```plaintext
+> HTML: <div id="ok"><span>test</span></div>
+> Selectors: div, div[id="ok"], div:has(:not(a))
+> ```
+>
+> The default behavior will cause three callbacks with the same node (div).
+> Because it will be found by every selector in the list.
+>
+> This option allows you to end the element check after the first match on
+> any of the selectors. That is, the callback will be called only once
+> for example above. This way we get rid of duplicates in the search.
+
+The `root::Bool` keyword controls whether to include the root node in the search.
+To quote the upstream documentation:
+
+> Includes the passed (root) node in the search.
+>
+> By default, the root node does not participate in selector searches,
+> only its children.
+>
+> This behavior is logical, if you have found a node and then you want to
+> search for other nodes in it, you don't need to check it again.
+>
+> But there are cases when it is necessary for root node to participate
+> in the search.  That's what this option is for.
 """
 function query end
 
@@ -245,7 +282,11 @@ struct CSSSelectorError <: Exception
     css::String
 end
 
-function query(f, node::Node, selector::String)
+function query(f, node::Node, selector::String; first = false, root = false)
+    if first && root
+        throw(ArgumentError("`first` and `root` cannot both be set to `true`."))
+    end
+
     parser = LibLexbor.lxb_css_parser_create()
     status = LibLexbor.lxb_css_parser_init(parser, C_NULL)
     if status != LibLexbor.LXB_STATUS_OK
@@ -259,6 +300,19 @@ function query(f, node::Node, selector::String)
         LibLexbor.lxb_selectors_destroy(selectors, true)
         LibLexbor.lxb_css_parser_destroy(parser, true)
         throw(LexborError("could not create selectors."))
+    end
+
+    if first
+        LibLexbor.lxb_selectors_opt_set_noi(
+            selectors,
+            LibLexbor.LXB_SELECTORS_OPT_MATCH_FIRST,
+        )
+    end
+    if root
+        LibLexbor.lxb_selectors_opt_set_noi(
+            selectors,
+            LibLexbor.LXB_SELECTORS_OPT_MATCH_ROOT,
+        )
     end
 
     list = LibLexbor.lxb_css_selectors_parse(parser, selector, sizeof(selector))
@@ -288,7 +342,7 @@ function query(f, node::Node, selector::String)
 
     return nothing
 end
-query(f, doc::Document, selector::String) = query(f, Node(doc), selector)
+query(f, doc::Document, selector::String; kws...) = query(f, Node(doc), selector; kws...)
 
 # Node collector:
 
@@ -298,11 +352,11 @@ end
 
 (cn::CollectNodes)(node::Node) = push!(cn.nodes, node)
 
-function query(node::Node, selector::String)
+function query(node::Node, selector::String; kws...)
     nodes = Node[]
-    query(CollectNodes(nodes), node, selector)
+    query(CollectNodes(nodes), node, selector; kws...)
     return nodes
 end
-query(doc::Document, selector::String) = query(Node(doc), selector)
+query(doc::Document, selector::String; kws...) = query(Node(doc), selector; kws...)
 
 end

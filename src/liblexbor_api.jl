@@ -856,11 +856,69 @@ end
 
 const lxb_css_parser_t = lxb_css_parser
 
-struct lxb_selectors_t
+# typedef lxb_selectors_entry_t * ( * lxb_selectors_state_cb_f ) ( lxb_selectors_t * selectors , lxb_selectors_entry_t * entry )
+const lxb_selectors_state_cb_f = Ptr{Cvoid}
+
+struct lxb_selectors_entry
+    id::Csize_t
+    combinator::lxb_css_selector_combinator_t
+    selector::Ptr{lxb_css_selector_t}
+    node::Ptr{lxb_dom_node_t}
+    next::Ptr{Cvoid} # next::Ptr{lxb_selectors_entry_t}
+    prev::Ptr{Cvoid} # prev::Ptr{lxb_selectors_entry_t}
+    following::Ptr{Cvoid} # following::Ptr{lxb_selectors_entry_t}
+    nested::Ptr{Cvoid} # nested::Ptr{lxb_selectors_nested_t}
+end
+
+function Base.getproperty(x::lxb_selectors_entry, f::Symbol)
+    f === :next && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
+    f === :prev && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
+    f === :following && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
+    f === :nested && return Ptr{lxb_selectors_nested_t}(getfield(x, f))
+    return getfield(x, f)
+end
+
+const lxb_selectors_entry_t = lxb_selectors_entry
+
+# typedef lxb_status_t ( * lxb_selectors_cb_f ) ( lxb_dom_node_t * node , lxb_css_selector_specificity_t spec , void * ctx )
+const lxb_selectors_cb_f = Ptr{Cvoid}
+
+struct lxb_selectors_nested
+    entry::Ptr{lxb_selectors_entry_t}
+    return_state::lxb_selectors_state_cb_f
+    cb::lxb_selectors_cb_f
+    ctx::Ptr{Cvoid}
+    root::Ptr{lxb_dom_node_t}
+    last::Ptr{lxb_selectors_entry_t}
+    parent::Ptr{Cvoid} # parent::Ptr{lxb_selectors_nested_t}
+    index::Csize_t
+    found::Bool
+end
+
+function Base.getproperty(x::lxb_selectors_nested, f::Symbol)
+    f === :parent && return Ptr{lxb_selectors_nested_t}(getfield(x, f))
+    return getfield(x, f)
+end
+
+const lxb_selectors_nested_t = lxb_selectors_nested
+
+@cenum lxb_selectors_opt_t::UInt32 begin
+    LXB_SELECTORS_OPT_DEFAULT = 0
+    LXB_SELECTORS_OPT_MATCH_ROOT = 2
+    LXB_SELECTORS_OPT_MATCH_FIRST = 4
+end
+
+struct lxb_selectors
+    state::lxb_selectors_state_cb_f
     objs::Ptr{lexbor_dobject_t}
-    chld::Ptr{lexbor_dobject_t}
+    nested::Ptr{lexbor_dobject_t}
+    current::Ptr{lxb_selectors_nested_t}
+    first::Ptr{lxb_selectors_entry_t}
+    options::lxb_selectors_opt_t
     status::lxb_status_t
 end
+
+const lxb_selectors_t = lxb_selectors
 
 struct lexbor_avl
     nodes::Ptr{lexbor_dobject_t}
@@ -2249,9 +2307,8 @@ end
     LXB_HTML_TOKEN_ATTR_TYPE_VALUE_NULL = 2
 end
 
-function lxb_tag_name_by_id_noi(hash, tag_id, len)
+function lxb_tag_name_by_id_noi(tag_id, len)
     @ccall liblexbor.lxb_tag_name_by_id_noi(
-        hash::Ptr{lexbor_hash_t},
         tag_id::lxb_tag_id_t,
         len::Ptr{Csize_t},
     )::Ptr{lxb_char_t}
@@ -5238,39 +5295,6 @@ function lxb_dom_element_next_attribute_noi(attr)
     )::Ptr{lxb_dom_attr_t}
 end
 
-# typedef lxb_status_t ( * lxb_selectors_cb_f ) ( lxb_dom_node_t * node , lxb_css_selector_specificity_t spec , void * ctx )
-const lxb_selectors_cb_f = Ptr{Cvoid}
-
-struct lxb_selectors_entry_child
-    entry::Ptr{Cvoid} # entry::Ptr{lxb_selectors_entry_t}
-    next::Ptr{Cvoid} # next::Ptr{lxb_selectors_entry_child_t}
-end
-
-function Base.getproperty(x::lxb_selectors_entry_child, f::Symbol)
-    f === :entry && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
-    f === :next && return Ptr{lxb_selectors_entry_child_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_selectors_entry_child_t = lxb_selectors_entry_child
-
-struct lxb_selectors_entry
-    id::Csize_t
-    selector::Ptr{lxb_css_selector_t}
-    node::Ptr{lxb_dom_node_t}
-    next::Ptr{Cvoid} # next::Ptr{lxb_selectors_entry_t}
-    prev::Ptr{Cvoid} # prev::Ptr{lxb_selectors_entry_t}
-    child::Ptr{lxb_selectors_entry_child_t}
-end
-
-function Base.getproperty(x::lxb_selectors_entry, f::Symbol)
-    f === :next && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
-    f === :prev && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_selectors_entry_t = lxb_selectors_entry
-
 function lxb_selectors_create()
     @ccall liblexbor.lxb_selectors_create()::Ptr{lxb_selectors_t}
 end
@@ -5294,6 +5318,13 @@ function lxb_selectors_find(selectors, root, list, cb, ctx)
         cb::lxb_selectors_cb_f,
         ctx::Ptr{Cvoid},
     )::lxb_status_t
+end
+
+function lxb_selectors_opt_set_noi(selectors, opt)
+    @ccall liblexbor.lxb_selectors_opt_set_noi(
+        selectors::Ptr{lxb_selectors_t},
+        opt::lxb_selectors_opt_t,
+    )::Cvoid
 end
 
 @cenum lxb_html_document_opt::UInt32 begin

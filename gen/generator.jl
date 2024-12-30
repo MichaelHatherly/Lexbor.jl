@@ -52,6 +52,7 @@ cd(@__DIR__) do
         :lxb_css_parser_init,
         :lxb_selectors_create,
         :lxb_selectors_init,
+        :lxb_selectors_opt_set_noi,
         :lxb_css_selectors_parse,
         :lxb_css_selector_serialize_list_chain,
         :lxb_selectors_find,
