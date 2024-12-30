@@ -11,8 +11,14 @@ include("liblexbor_api.jl")
 # Interface:
 
 export Document
+export Matcher
 export Node
+export Tree
+export attributes
+export comment
 export query
+export tag
+export text
 
 # Implementation:
 
@@ -283,6 +289,118 @@ struct CSSSelectorError <: Exception
 end
 
 function query(f, node::Node, selector::String; first = false, root = false)
+    obj = _create_selector(selector; first, root)
+
+    try
+        status = LibLexbor.lxb_selectors_find(
+            obj.selectors,
+            node.ptr,
+            obj.list,
+            _c_each_query_callback(),
+            Ref(QueryContext(node.document, f)),
+        )
+        if status != LibLexbor.LXB_STATUS_OK
+            throw(LexborError("failed to find selectors."))
+        end
+    finally
+        LibLexbor.lxb_selectors_destroy(obj.selectors, true)
+        LibLexbor.lxb_css_parser_destroy(obj.parser, true)
+        LibLexbor.lxb_css_selector_list_destroy_memory(obj.list)
+    end
+
+    return nothing
+end
+query(f, doc::Document, selector::String; kws...) = query(f, Node(doc), selector; kws...)
+
+# Node collector:
+
+struct CollectNodes
+    nodes::Vector{Node}
+end
+
+(cn::CollectNodes)(node::Node) = push!(cn.nodes, node)
+
+function query(node::Node, selector::String; kws...)
+    nodes = Node[]
+    query(CollectNodes(nodes), node, selector; kws...)
+    return nodes
+end
+query(doc::Document, selector::String; kws...) = query(Node(doc), selector; kws...)
+
+#
+# Matcher:
+#
+
+"""
+    Matcher(selector; first = false)
+
+Create a new `Matcher` object that can be used to test whether a `Node`
+matches the `selector` or not. `Matcher` objects are callable and can be
+used as follows:
+
+```julia
+function find_first_node(root, selector)
+    # Create the `Matcher` object once, then reuse in the loop.
+    matcher = Matcher(selector)
+    for node in AbstractTrees.PreOrderDFS(root)
+        if matcher(node)
+            return node
+        end
+    end
+    return nothing
+end
+```
+
+The `matcher` object has two callable methods. The first, shown above, returns
+`true` or `false` depending on whether the selector matches. The other method
+takes a first argument function `::Node -> Nothing` that is called when the
+selector matches.
+
+The keyword argument `first::Bool` has the same behaviour as the `first`
+keyword provided by `query`. See that function's documentation for details.
+"""
+mutable struct Matcher
+    parser::Ptr{LibLexbor.lxb_css_parser_t}
+    selectors::Ptr{LibLexbor.lxb_selectors_t}
+    list::Ptr{LibLexbor.lxb_css_selector_list_t}
+
+    function Matcher(selector::String; first = false)
+        obj = _create_selector(selector; first)
+
+        matcher = new(obj.parser, obj.selectors, obj.list)
+        finalizer(matcher) do obj
+            LibLexbor.lxb_selectors_destroy(obj.selectors, true)
+            LibLexbor.lxb_css_parser_destroy(obj.parser, true)
+            LibLexbor.lxb_css_selector_list_destroy_memory(obj.list)
+        end
+
+        return matcher
+    end
+end
+
+function (matcher::Matcher)(f, node::Node)
+    LibLexbor.lxb_selectors_match_node(
+        matcher.selectors,
+        node.ptr,
+        matcher.list,
+        _c_each_query_callback(),
+        Ref(QueryContext(node.document, f)),
+    )
+    return nothing
+end
+
+mutable struct IsMatch
+    value::Bool
+end
+(cn::IsMatch)(::Node) = cn.value = true
+
+function (matcher::Matcher)(node::Node)
+    is_match = IsMatch(false)
+    matcher(is_match, node)
+    return is_match.value
+end
+
+function _create_selector(selector::String; first = false, root = false)
     if first && root
         throw(ArgumentError("`first` and `root` cannot both be set to `true`."))
     end
@@ -323,40 +441,7 @@ function query(f, node::Node, selector::String; first = false, root = false)
         throw(CSSSelectorError("could not parse css selectors.", selector))
     end
 
-    try
-        status = LibLexbor.lxb_selectors_find(
-            selectors,
-            node.ptr,
-            list,
-            _c_each_query_callback(),
-            Ref(QueryContext(node.document, f)),
-        )
-        if status != LibLexbor.LXB_STATUS_OK
-            throw(LexborError("failed to find selectors."))
-        end
-    finally
-        LibLexbor.lxb_selectors_destroy(selectors, true)
-        LibLexbor.lxb_css_parser_destroy(parser, true)
-        LibLexbor.lxb_css_selector_list_destroy_memory(list)
-    end
-
-    return nothing
+    return (; parser, selectors, list)
 end
-query(f, doc::Document, selector::String; kws...) = query(f, Node(doc), selector; kws...)
-
-# Node collector:
-
-struct CollectNodes
-    nodes::Vector{Node}
-end
-
-(cn::CollectNodes)(node::Node) = push!(cn.nodes, node)
-
-function query(node::Node, selector::String; kws...)
-    nodes = Node[]
-    query(CollectNodes(nodes), node, selector; kws...)
-    return nodes
-end
-query(doc::Document, selector::String; kws...) = query(Node(doc), selector; kws...)
 
 end

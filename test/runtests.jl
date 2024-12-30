@@ -62,5 +62,16 @@ using AbstractTrees
         div_node = Lexbor.query(node, "div"; root = true)
         @test !isempty(div_node)
         @test node == only(div_node)
+
+        function get_div(doc, selector)
+            matcher = Lexbor.Matcher(selector)
+            for node in AbstractTrees.PreOrderDFS(Node(doc))
+                matcher(node) && return node
+            end
+            return nothing
+        end
+
+        @test get_div(doc, "div#ok") === node
+        @test Lexbor.tag(get_div(doc, "span")) === :span
     end
 end
