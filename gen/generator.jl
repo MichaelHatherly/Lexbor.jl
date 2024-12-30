@@ -56,6 +56,7 @@ cd(@__DIR__) do
         :lxb_css_selectors_parse,
         :lxb_css_selector_serialize_list_chain,
         :lxb_selectors_find,
+        :lxb_selectors_match_node,
         :lxb_selectors_destroy,
         :lxb_css_parser_destroy,
         :lxb_css_selector_list_destroy_memory,

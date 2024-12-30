@@ -5320,6 +5320,16 @@ function lxb_selectors_find(selectors, root, list, cb, ctx)
     )::lxb_status_t
 end
 
+function lxb_selectors_match_node(selectors, node, list, cb, ctx)
+    @ccall liblexbor.lxb_selectors_match_node(
+        selectors::Ptr{lxb_selectors_t},
+        node::Ptr{lxb_dom_node_t},
+        list::Ptr{lxb_css_selector_list_t},
+        cb::lxb_selectors_cb_f,
+        ctx::Ptr{Cvoid},
+    )::lxb_status_t
+end
+
 function lxb_selectors_opt_set_noi(selectors, opt)
     @ccall liblexbor.lxb_selectors_opt_set_noi(
         selectors::Ptr{lxb_selectors_t},
