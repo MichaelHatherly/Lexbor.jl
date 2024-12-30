@@ -21,6 +21,7 @@ cd(@__DIR__) do
     Generators.build!(ctx, Generators.BUILDSTAGE_NO_PRINTING)
 
     allowed_functions = Set([
+        # HTML:
         :lxb_html_document_destroy,
         :lxb_html_tokenizer_tags_noi,
         :lxb_tag_name_by_id_noi,
@@ -36,6 +37,7 @@ cd(@__DIR__) do
         :lxb_html_parser_destroy,
         :lxb_html_parse,
         :lxb_html_document_destroy,
+        # DOM:
         :lxb_dom_node_text_content,
         :lxb_dom_node_first_child_noi,
         :lxb_dom_node_next_noi,
@@ -45,6 +47,17 @@ cd(@__DIR__) do
         :lxb_dom_attr_value_noi,
         :lxb_dom_attr_qualified_name,
         :lxb_dom_element_next_attribute_noi,
+        # CSS:
+        :lxb_css_parser_create,
+        :lxb_css_parser_init,
+        :lxb_selectors_create,
+        :lxb_selectors_init,
+        :lxb_css_selectors_parse,
+        :lxb_css_selector_serialize_list_chain,
+        :lxb_selectors_find,
+        :lxb_selectors_destroy,
+        :lxb_css_parser_destroy,
+        :lxb_css_selector_list_destroy_memory,
     ])
 
     function rewrite!(e::Expr)
