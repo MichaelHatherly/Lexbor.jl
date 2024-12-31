@@ -19,6 +19,9 @@ export comment
 export query
 export tag
 export text
+export is_comment
+export is_element
+export is_text
 
 # Implementation:
 
@@ -124,8 +127,33 @@ Base.show(io::IO, t::Tree) = AbstractTrees.print_tree(io, t.n)
 
 _node_type(node::Node) = unsafe_load(node.ptr).type
 
+"""
+    is_comment(node::Node) -> Bool
+
+Is `node` a comment `Node`? E.g. `<!-- ... -->` syntax.
+
+Use [`comment`](@ref Lexbor.comment) to access the `String` contents of the
+comment.
+"""
 is_comment(node::Node) = _node_type(node) == LibLexbor.LXB_DOM_NODE_TYPE_COMMENT
+
+"""
+    is_element(node::Node) -> Bool
+
+Is the `node` an HTML element `Node`? E.g. a `<a>`, `<div>`, etc.
+
+Use [`tag`](@ref Lexbor.tag) to access the name of the element as a `Symbol` and
+use [`attributes`](@ref Lexbor.attributes) to access the element attributes.
+"""
 is_element(node::Node) = _node_type(node) == LibLexbor.LXB_DOM_NODE_TYPE_ELEMENT
+
+"""
+    is_text(node::Node) -> Bool
+
+Is the `node` a plain text string?
+
+Use [`text`](@ref Lexbor.text) to access the `String` contents of the `node`.
+"""
 is_text(node::Node) = _node_type(node) == LibLexbor.LXB_DOM_NODE_TYPE_TEXT
 
 """
@@ -360,6 +388,7 @@ The keyword argument `first::Bool` has the same behaviour as the `first`
 keyword provided by `query`. See that function's documentation for details.
 """
 mutable struct Matcher
+    selector::String
     parser::Ptr{LibLexbor.lxb_css_parser_t}
     selectors::Ptr{LibLexbor.lxb_selectors_t}
     list::Ptr{LibLexbor.lxb_css_selector_list_t}
@@ -367,7 +396,7 @@ mutable struct Matcher
     function Matcher(selector::String; first = false)
         obj = _create_selector(selector; first)
 
-        matcher = new(obj.parser, obj.selectors, obj.list)
+        matcher = new(selector, obj.parser, obj.selectors, obj.list)
         finalizer(matcher) do obj
             LibLexbor.lxb_selectors_destroy(obj.selectors, true)
             LibLexbor.lxb_css_parser_destroy(obj.parser, true)
@@ -377,6 +406,8 @@ mutable struct Matcher
         return matcher
     end
 end
+
+Base.show(io::IO, m::Matcher) = print(io, "$(Matcher)($(repr(m.selector)))")
 
 function (matcher::Matcher)(f, node::Node)
     LibLexbor.lxb_selectors_match_node(
