@@ -1,7 +1,7 @@
 name = "Lexbor"
 uuid = "7c3807c3-6380-4629-8731-66194421aa0a"
 authors = ["MichaelHatherly <michaelhatherly@gmail.com>"]
-version = "0.1.0"
+version = "1.0.0"
 
 [deps]
 AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
