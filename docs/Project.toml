@@ -1,0 +1,7 @@
+[deps]
+AbstractTrees = "1520ce14-60c1-5f80-bbc7-55ef81b5835c"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Lexbor = "7c3807c3-6380-4629-8731-66194421aa0a"
+
+[compat]
+Documenter = "1"
