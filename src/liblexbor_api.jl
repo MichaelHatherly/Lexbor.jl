@@ -3,13 +3,9 @@ module LibLexbor
 using lexbor_jll
 export lexbor_jll
 
-using CEnum
+using CEnum: CEnum, @cenum
 
 uint32_t(value) = UInt32(value)
-
-const __darwin_intptr_t = Clong
-
-const intptr_t = __darwin_intptr_t
 
 const lxb_char_t = Cuchar
 
@@ -104,7 +100,9 @@ const lxb_dom_event_target_t = lxb_dom_event_target
     LXB_DOM_NODE_TYPE_DOCUMENT_TYPE = 10
     LXB_DOM_NODE_TYPE_DOCUMENT_FRAGMENT = 11
     LXB_DOM_NODE_TYPE_NOTATION = 12
-    LXB_DOM_NODE_TYPE_LAST_ENTRY = 13
+    LXB_DOM_NODE_TYPE_CHARACTER_DATA = 13
+    LXB_DOM_NODE_TYPE_SHADOW_ROOT = 14
+    LXB_DOM_NODE_TYPE_LAST_ENTRY = 15
 end
 
 struct lxb_dom_node
@@ -206,6 +204,29 @@ end
 
 const lxb_dom_attr_t = lxb_dom_attr
 
+struct lexbor_avl_node
+    type::Csize_t
+    height::Cshort
+    value::Ptr{Cvoid}
+    left::Ptr{Cvoid} # left::Ptr{lexbor_avl_node_t}
+    right::Ptr{Cvoid} # right::Ptr{lexbor_avl_node_t}
+    parent::Ptr{Cvoid} # parent::Ptr{lexbor_avl_node_t}
+end
+
+function Base.getproperty(x::lexbor_avl_node, f::Symbol)
+    f === :left && return Ptr{lexbor_avl_node_t}(getfield(x, f))
+    f === :right && return Ptr{lexbor_avl_node_t}(getfield(x, f))
+    f === :parent && return Ptr{lexbor_avl_node_t}(getfield(x, f))
+    return getfield(x, f)
+end
+
+const lexbor_avl_node_t = lexbor_avl_node
+
+@cenum lxb_dom_element_condition_t::UInt32 begin
+    LXB_DOM_ELEMENT_CONDITION_OK = 0
+    LXB_DOM_ELEMENT_CONDITION_DIRTY_STYLE = 1
+end
+
 @cenum lxb_dom_element_custom_state_t::UInt32 begin
     LXB_DOM_ELEMENT_CUSTOM_STATE_UNDEFINED = 0
     LXB_DOM_ELEMENT_CUSTOM_STATE_FAILED = 1
@@ -222,6 +243,9 @@ struct lxb_dom_element
     last_attr::Ptr{lxb_dom_attr_t}
     attr_id::Ptr{lxb_dom_attr_t}
     attr_class::Ptr{lxb_dom_attr_t}
+    style::Ptr{lexbor_avl_node_t}
+    list::Ptr{Cvoid}
+    condition::lxb_dom_element_condition_t
     custom_state::lxb_dom_element_custom_state_t
 end
 
@@ -236,37 +260,70 @@ const lxb_dom_interface_clone_f = Ptr{Cvoid}
 # typedef lxb_dom_interface_t * ( * lxb_dom_interface_destroy_f ) ( lxb_dom_interface_t * intrfc )
 const lxb_dom_interface_destroy_f = Ptr{Cvoid}
 
-# typedef lxb_status_t ( * lxb_dom_event_insert_f ) ( lxb_dom_node_t * node )
-const lxb_dom_event_insert_f = Ptr{Cvoid}
+# typedef lxb_status_t ( * lxb_dom_node_cb_insertion_f ) ( lxb_dom_node_t * inserted_node )
+const lxb_dom_node_cb_insertion_f = Ptr{Cvoid}
 
-# typedef lxb_status_t ( * lxb_dom_event_remove_f ) ( lxb_dom_node_t * node )
-const lxb_dom_event_remove_f = Ptr{Cvoid}
+# typedef lxb_status_t ( * lxb_dom_node_cb_removing_f ) ( lxb_dom_node_t * removed_node , lxb_dom_node_t * old_parent )
+const lxb_dom_node_cb_removing_f = Ptr{Cvoid}
 
-# typedef lxb_status_t ( * lxb_dom_event_destroy_f ) ( lxb_dom_node_t * node )
-const lxb_dom_event_destroy_f = Ptr{Cvoid}
+# typedef lxb_status_t ( * lxb_dom_node_cb_moving_f ) ( lxb_dom_node_t * moved_node , lxb_dom_node_t * old_parent )
+const lxb_dom_node_cb_moving_f = Ptr{Cvoid}
 
-# typedef lxb_status_t ( * lxb_dom_event_set_value_f ) ( lxb_dom_node_t * node , const lxb_char_t * value , size_t length )
-const lxb_dom_event_set_value_f = Ptr{Cvoid}
+# typedef lxb_status_t ( * lxb_dom_node_cb_destroy_f ) ( lxb_dom_node_t * node )
+const lxb_dom_node_cb_destroy_f = Ptr{Cvoid}
 
-struct __JL_Ctag_276
+# typedef lxb_status_t ( * lxb_dom_node_cb_children_changed_f ) ( lxb_dom_node_t * parent )
+const lxb_dom_node_cb_children_changed_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_dom_node_cb_post_connection_f ) ( lxb_dom_node_t * connected_node )
+const lxb_dom_node_cb_post_connection_f = Ptr{Cvoid}
+
+struct lxb_dom_document_mutation_cb_t
+    inserted::lxb_dom_node_cb_insertion_f
+    removed::lxb_dom_node_cb_removing_f
+    moved::lxb_dom_node_cb_moving_f
+    destroy::lxb_dom_node_cb_destroy_f
+    children_changed::lxb_dom_node_cb_children_changed_f
+    connected::lxb_dom_node_cb_post_connection_f
+end
+
+# typedef lxb_status_t ( * lxb_dom_element_attr_change_f ) ( lxb_dom_element_t * element , lxb_dom_attr_id_t local_name , const lxb_char_t * old_value , size_t old_len , const lxb_char_t * value , size_t value_len , lxb_ns_id_t ns )
+const lxb_dom_element_attr_change_f = Ptr{Cvoid}
+
+struct lxb_dom_document_attr_mutation_cb_t
+    change::lxb_dom_element_attr_change_f
+    append::lxb_dom_element_attr_change_f
+    remove::lxb_dom_element_attr_change_f
+    replace::lxb_dom_element_attr_change_f
+end
+
+struct __JL_Ctag_109
     data::NTuple{24,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_276}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_109}, f::Symbol)
     f === :long_str && return Ptr{Ptr{lxb_char_t}}(x + 0)
     f === :short_str && return Ptr{NTuple{17,lxb_char_t}}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_276, f::Symbol)
-    r = Ref{__JL_Ctag_276}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_276}, r)
+function Base.getproperty(x::__JL_Ctag_109, f::Symbol)
+    r = Ref{__JL_Ctag_109}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_109}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_276}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_109}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_109, private::Bool = false)
+    (:long_str, :short_str, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lexbor_hash_entry
@@ -274,7 +331,7 @@ struct lexbor_hash_entry
 end
 
 function Base.getproperty(x::Ptr{lexbor_hash_entry}, f::Symbol)
-    f === :u && return Ptr{__JL_Ctag_276}(x + 0)
+    f === :u && return Ptr{__JL_Ctag_109}(x + 0)
     f === :length && return Ptr{Csize_t}(x + 24)
     f === :next && return Ptr{Ptr{lexbor_hash_entry_t}}(x + 32)
     return getfield(x, f)
@@ -291,6 +348,14 @@ function Base.setproperty!(x::Ptr{lexbor_hash_entry}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
 end
 
+function Base.propertynames(x::lexbor_hash_entry, private::Bool = false)
+    (:u, :length, :next, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
 const lexbor_hash_entry_t = lexbor_hash_entry
 
 struct lexbor_hash
@@ -303,6 +368,12 @@ end
 
 const lexbor_hash_t = lexbor_hash
 
+mutable struct lxb_dom_document_css end
+
+const lxb_dom_document_css_t = lxb_dom_document_css
+
+const lxb_dom_document_opt_t = UInt32
+
 struct lxb_dom_document
     node::lxb_dom_node_t
     compat_mode::lxb_dom_document_cmode_t
@@ -312,10 +383,8 @@ struct lxb_dom_document
     create_interface::lxb_dom_interface_create_f
     clone_interface::lxb_dom_interface_clone_f
     destroy_interface::lxb_dom_interface_destroy_f
-    ev_insert::lxb_dom_event_insert_f
-    ev_remove::lxb_dom_event_remove_f
-    ev_destroy::lxb_dom_event_destroy_f
-    ev_set_value::lxb_dom_event_set_value_f
+    mutation::Ptr{lxb_dom_document_mutation_cb_t}
+    attr_mutation::Ptr{lxb_dom_document_attr_mutation_cb_t}
     mraw::Ptr{lexbor_mraw_t}
     text::Ptr{lexbor_mraw_t}
     tags::Ptr{lexbor_hash_t}
@@ -324,6 +393,8 @@ struct lxb_dom_document
     ns::Ptr{lexbor_hash_t}
     parser::Ptr{Cvoid}
     user::Ptr{Cvoid}
+    css::Ptr{lxb_dom_document_css_t}
+    options::lxb_dom_document_opt_t
     tags_inherited::Bool
     ns_inherited::Bool
     scripting::Bool
@@ -358,77 +429,8 @@ end
 
 const lxb_dom_shadow_root_t = lxb_dom_shadow_root
 
-struct lexbor_avl_node
-    type::Csize_t
-    height::Cshort
-    value::Ptr{Cvoid}
-    left::Ptr{Cvoid} # left::Ptr{lexbor_avl_node_t}
-    right::Ptr{Cvoid} # right::Ptr{lexbor_avl_node_t}
-    parent::Ptr{Cvoid} # parent::Ptr{lexbor_avl_node_t}
-end
-
-function Base.getproperty(x::lexbor_avl_node, f::Symbol)
-    f === :left && return Ptr{lexbor_avl_node_t}(getfield(x, f))
-    f === :right && return Ptr{lexbor_avl_node_t}(getfield(x, f))
-    f === :parent && return Ptr{lexbor_avl_node_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lexbor_avl_node_t = lexbor_avl_node
-
-@cenum lxb_css_rule_type_t::UInt32 begin
-    LXB_CSS_RULE_UNDEF = 0
-    LXB_CSS_RULE_STYLESHEET = 1
-    LXB_CSS_RULE_LIST = 2
-    LXB_CSS_RULE_AT_RULE = 3
-    LXB_CSS_RULE_STYLE = 4
-    LXB_CSS_RULE_BAD_STYLE = 5
-    LXB_CSS_RULE_DECLARATION_LIST = 6
-    LXB_CSS_RULE_DECLARATION = 7
-end
-
-struct lxb_css_memory
-    objs::Ptr{lexbor_dobject_t}
-    mraw::Ptr{lexbor_mraw_t}
-    tree::Ptr{lexbor_mraw_t}
-    ref_count::Csize_t
-end
-
-const lxb_css_memory_t = lxb_css_memory
-
-struct lxb_css_rule
-    type::lxb_css_rule_type_t
-    next::Ptr{Cvoid} # next::Ptr{lxb_css_rule_t}
-    prev::Ptr{Cvoid} # prev::Ptr{lxb_css_rule_t}
-    parent::Ptr{Cvoid} # parent::Ptr{lxb_css_rule_t}
-    _begin::Ptr{lxb_char_t}
-    _end::Ptr{lxb_char_t}
-    memory::Ptr{lxb_css_memory_t}
-    ref_count::Csize_t
-end
-
-function Base.getproperty(x::lxb_css_rule, f::Symbol)
-    f === :next && return Ptr{lxb_css_rule_t}(getfield(x, f))
-    f === :prev && return Ptr{lxb_css_rule_t}(getfield(x, f))
-    f === :parent && return Ptr{lxb_css_rule_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_css_rule_t = lxb_css_rule
-
-struct lxb_css_rule_declaration_list
-    rule::lxb_css_rule_t
-    first::Ptr{lxb_css_rule_t}
-    last::Ptr{lxb_css_rule_t}
-    count::Csize_t
-end
-
-const lxb_css_rule_declaration_list_t = lxb_css_rule_declaration_list
-
 struct lxb_html_element
     element::lxb_dom_element_t
-    style::Ptr{lexbor_avl_node_t}
-    list::Ptr{lxb_css_rule_declaration_list_t}
 end
 
 const lxb_html_element_t = lxb_html_element
@@ -445,500 +447,6 @@ end
 
 const lxb_html_body_element_t = lxb_html_body_element
 
-@cenum lxb_css_selector_type_t::UInt32 begin
-    LXB_CSS_SELECTOR_TYPE__UNDEF = 0
-    LXB_CSS_SELECTOR_TYPE_ANY = 1
-    LXB_CSS_SELECTOR_TYPE_ELEMENT = 2
-    LXB_CSS_SELECTOR_TYPE_ID = 3
-    LXB_CSS_SELECTOR_TYPE_CLASS = 4
-    LXB_CSS_SELECTOR_TYPE_ATTRIBUTE = 5
-    LXB_CSS_SELECTOR_TYPE_PSEUDO_CLASS = 6
-    LXB_CSS_SELECTOR_TYPE_PSEUDO_CLASS_FUNCTION = 7
-    LXB_CSS_SELECTOR_TYPE_PSEUDO_ELEMENT = 8
-    LXB_CSS_SELECTOR_TYPE_PSEUDO_ELEMENT_FUNCTION = 9
-    LXB_CSS_SELECTOR_TYPE__LAST_ENTRY = 10
-end
-
-@cenum lxb_css_selector_combinator_t::UInt32 begin
-    LXB_CSS_SELECTOR_COMBINATOR_DESCENDANT = 0
-    LXB_CSS_SELECTOR_COMBINATOR_CLOSE = 1
-    LXB_CSS_SELECTOR_COMBINATOR_CHILD = 2
-    LXB_CSS_SELECTOR_COMBINATOR_SIBLING = 3
-    LXB_CSS_SELECTOR_COMBINATOR_FOLLOWING = 4
-    LXB_CSS_SELECTOR_COMBINATOR_CELL = 5
-    LXB_CSS_SELECTOR_COMBINATOR__LAST_ENTRY = 6
-end
-
-struct lxb_css_selector_u
-    data::NTuple{24,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_selector_u}, f::Symbol)
-    f === :attribute && return Ptr{lxb_css_selector_attribute_t}(x + 0)
-    f === :pseudo && return Ptr{lxb_css_selector_pseudo_t}(x + 0)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_selector_u, f::Symbol)
-    r = Ref{lxb_css_selector_u}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_selector_u}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_selector_u}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-struct lxb_css_selector
-    data::NTuple{88,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_selector}, f::Symbol)
-    f === :type && return Ptr{lxb_css_selector_type_t}(x + 0)
-    f === :combinator && return Ptr{lxb_css_selector_combinator_t}(x + 4)
-    f === :name && return Ptr{lexbor_str_t}(x + 8)
-    f === :ns && return Ptr{lexbor_str_t}(x + 24)
-    f === :u && return Ptr{lxb_css_selector_u}(x + 40)
-    f === :next && return Ptr{Ptr{lxb_css_selector_t}}(x + 64)
-    f === :prev && return Ptr{Ptr{lxb_css_selector_t}}(x + 72)
-    f === :list && return Ptr{Ptr{lxb_css_selector_list_t}}(x + 80)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_selector, f::Symbol)
-    r = Ref{lxb_css_selector}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_selector}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_selector}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-const lxb_css_selector_t = lxb_css_selector
-
-const lxb_css_selector_specificity_t = UInt32
-
-struct lxb_css_selector_list
-    first::Ptr{lxb_css_selector_t}
-    last::Ptr{lxb_css_selector_t}
-    parent::Ptr{lxb_css_selector_t}
-    next::Ptr{Cvoid} # next::Ptr{lxb_css_selector_list_t}
-    prev::Ptr{Cvoid} # prev::Ptr{lxb_css_selector_list_t}
-    memory::Ptr{lxb_css_memory_t}
-    specificity::lxb_css_selector_specificity_t
-end
-
-function Base.getproperty(x::lxb_css_selector_list, f::Symbol)
-    f === :next && return Ptr{lxb_css_selector_list_t}(getfield(x, f))
-    f === :prev && return Ptr{lxb_css_selector_list_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_css_selector_list_t = lxb_css_selector_list
-
-struct lxb_css_selectors
-    list::Ptr{lxb_css_selector_list_t}
-    list_last::Ptr{lxb_css_selector_list_t}
-    parent::Ptr{lxb_css_selector_t}
-    combinator::lxb_css_selector_combinator_t
-    comb_default::lxb_css_selector_combinator_t
-    error::Csize_t
-    status::Bool
-    err_in_function::Bool
-    failed::Bool
-end
-
-const lxb_css_selectors_t = lxb_css_selectors
-
-# typedef bool ( * lxb_css_parser_state_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx )
-const lxb_css_parser_state_f = Ptr{Cvoid}
-
-struct lxb_css_syntax_token_u
-    data::NTuple{80,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_syntax_token_u}, f::Symbol)
-    f === :base && return Ptr{lxb_css_syntax_token_base_t}(x + 0)
-    f === :comment && return Ptr{lxb_css_syntax_token_comment_t}(x + 0)
-    f === :number && return Ptr{lxb_css_syntax_token_number_t}(x + 0)
-    f === :dimension && return Ptr{lxb_css_syntax_token_dimension_t}(x + 0)
-    f === :percentage && return Ptr{lxb_css_syntax_token_percentage_t}(x + 0)
-    f === :hash && return Ptr{lxb_css_syntax_token_hash_t}(x + 0)
-    f === :string && return Ptr{lxb_css_syntax_token_string_t}(x + 0)
-    f === :bad_string && return Ptr{lxb_css_syntax_token_bad_string_t}(x + 0)
-    f === :delim && return Ptr{lxb_css_syntax_token_delim_t}(x + 0)
-    f === :lparenthesis && return Ptr{lxb_css_syntax_token_l_parenthesis_t}(x + 0)
-    f === :rparenthesis && return Ptr{lxb_css_syntax_token_r_parenthesis_t}(x + 0)
-    f === :cdc && return Ptr{lxb_css_syntax_token_cdc_t}(x + 0)
-    f === :_function && return Ptr{lxb_css_syntax_token_function_t}(x + 0)
-    f === :ident && return Ptr{lxb_css_syntax_token_ident_t}(x + 0)
-    f === :url && return Ptr{lxb_css_syntax_token_url_t}(x + 0)
-    f === :bad_url && return Ptr{lxb_css_syntax_token_bad_url_t}(x + 0)
-    f === :at_keyword && return Ptr{lxb_css_syntax_token_at_keyword_t}(x + 0)
-    f === :whitespace && return Ptr{lxb_css_syntax_token_whitespace_t}(x + 0)
-    f === :terminated && return Ptr{lxb_css_syntax_token_terminated_t}(x + 0)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_syntax_token_u, f::Symbol)
-    r = Ref{lxb_css_syntax_token_u}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_syntax_token_u}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_syntax_token_u}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-@cenum lxb_css_syntax_token_type_t::UInt32 begin
-    LXB_CSS_SYNTAX_TOKEN_UNDEF = 0
-    LXB_CSS_SYNTAX_TOKEN_IDENT = 1
-    LXB_CSS_SYNTAX_TOKEN_FUNCTION = 2
-    LXB_CSS_SYNTAX_TOKEN_AT_KEYWORD = 3
-    LXB_CSS_SYNTAX_TOKEN_HASH = 4
-    LXB_CSS_SYNTAX_TOKEN_STRING = 5
-    LXB_CSS_SYNTAX_TOKEN_BAD_STRING = 6
-    LXB_CSS_SYNTAX_TOKEN_URL = 7
-    LXB_CSS_SYNTAX_TOKEN_BAD_URL = 8
-    LXB_CSS_SYNTAX_TOKEN_COMMENT = 9
-    LXB_CSS_SYNTAX_TOKEN_WHITESPACE = 10
-    LXB_CSS_SYNTAX_TOKEN_DIMENSION = 11
-    LXB_CSS_SYNTAX_TOKEN_DELIM = 12
-    LXB_CSS_SYNTAX_TOKEN_NUMBER = 13
-    LXB_CSS_SYNTAX_TOKEN_PERCENTAGE = 14
-    LXB_CSS_SYNTAX_TOKEN_CDO = 15
-    LXB_CSS_SYNTAX_TOKEN_CDC = 16
-    LXB_CSS_SYNTAX_TOKEN_COLON = 17
-    LXB_CSS_SYNTAX_TOKEN_SEMICOLON = 18
-    LXB_CSS_SYNTAX_TOKEN_COMMA = 19
-    LXB_CSS_SYNTAX_TOKEN_LS_BRACKET = 20
-    LXB_CSS_SYNTAX_TOKEN_RS_BRACKET = 21
-    LXB_CSS_SYNTAX_TOKEN_L_PARENTHESIS = 22
-    LXB_CSS_SYNTAX_TOKEN_R_PARENTHESIS = 23
-    LXB_CSS_SYNTAX_TOKEN_LC_BRACKET = 24
-    LXB_CSS_SYNTAX_TOKEN_RC_BRACKET = 25
-    LXB_CSS_SYNTAX_TOKEN__EOF = 26
-    LXB_CSS_SYNTAX_TOKEN__TERMINATED = 27
-    LXB_CSS_SYNTAX_TOKEN__END = 27
-    LXB_CSS_SYNTAX_TOKEN__LAST_ENTRY = 28
-end
-
-struct lxb_css_syntax_token
-    data::NTuple{104,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_syntax_token}, f::Symbol)
-    f === :types && return Ptr{lxb_css_syntax_token_u}(x + 0)
-    f === :type && return Ptr{lxb_css_syntax_token_type_t}(x + 80)
-    f === :offset && return Ptr{Csize_t}(x + 88)
-    f === :cloned && return Ptr{Bool}(x + 96)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_syntax_token, f::Symbol)
-    r = Ref{lxb_css_syntax_token}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_syntax_token}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_syntax_token}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-const lxb_css_syntax_token_t = lxb_css_syntax_token
-
-struct lxb_css_syntax_tokenizer_cache_t
-    list::Ptr{Ptr{lxb_css_syntax_token_t}}
-    size::Csize_t
-    length::Csize_t
-end
-
-struct lexbor_array_obj_t
-    list::Ptr{UInt8}
-    size::Csize_t
-    length::Csize_t
-    struct_size::Csize_t
-end
-
-# typedef lxb_status_t ( * lxb_css_syntax_tokenizer_chunk_f ) ( lxb_css_syntax_tokenizer_t * tkz , const lxb_char_t * * data , const lxb_char_t * * end , void * ctx )
-const lxb_css_syntax_tokenizer_chunk_f = Ptr{Cvoid}
-
-# typedef const lxb_char_t * ( * lxb_css_syntax_token_data_cb_f ) ( const lxb_char_t * begin , const lxb_char_t * end , lexbor_str_t * str , lexbor_mraw_t * mraw , lxb_css_syntax_token_data_t * td )
-const lxb_css_syntax_token_data_cb_f = Ptr{Cvoid}
-
-const lxb_status_t = Cuint
-
-struct lxb_css_syntax_token_data
-    cb::lxb_css_syntax_token_data_cb_f
-    status::lxb_status_t
-    count::Cint
-    num::UInt32
-    is_last::Bool
-end
-
-const lxb_css_syntax_token_data_t = lxb_css_syntax_token_data
-
-struct lxb_css_syntax_tokenizer
-    cache::Ptr{lxb_css_syntax_tokenizer_cache_t}
-    tokens::Ptr{lexbor_dobject_t}
-    parse_errors::Ptr{lexbor_array_obj_t}
-    in_begin::Ptr{lxb_char_t}
-    in_end::Ptr{lxb_char_t}
-    _begin::Ptr{lxb_char_t}
-    offset::Csize_t
-    cache_pos::Csize_t
-    prepared::Csize_t
-    mraw::Ptr{lexbor_mraw_t}
-    chunk_cb::lxb_css_syntax_tokenizer_chunk_f
-    chunk_ctx::Ptr{Cvoid}
-    start::Ptr{lxb_char_t}
-    pos::Ptr{lxb_char_t}
-    _end::Ptr{lxb_char_t}
-    buffer::NTuple{128,lxb_char_t}
-    token_data::lxb_css_syntax_token_data_t
-    opt::Cuint
-    status::lxb_status_t
-    eof::Bool
-    with_comment::Bool
-end
-
-const lxb_css_syntax_tokenizer_t = lxb_css_syntax_tokenizer
-
-# typedef const lxb_css_syntax_token_t * ( * lxb_css_syntax_state_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , lxb_css_syntax_rule_t * rule )
-const lxb_css_syntax_state_f = Ptr{Cvoid}
-
-struct __JL_Ctag_270
-    data::NTuple{8,UInt8}
-end
-
-function Base.getproperty(x::Ptr{__JL_Ctag_270}, f::Symbol)
-    f === :cb && return Ptr{Ptr{lxb_css_syntax_cb_base_t}}(x + 0)
-    f === :list_rules && return Ptr{Ptr{lxb_css_syntax_cb_list_rules_t}}(x + 0)
-    f === :at_rule && return Ptr{Ptr{lxb_css_syntax_cb_at_rule_t}}(x + 0)
-    f === :qualified_rule && return Ptr{Ptr{lxb_css_syntax_cb_qualified_rule_t}}(x + 0)
-    f === :declarations && return Ptr{Ptr{lxb_css_syntax_cb_declarations_t}}(x + 0)
-    f === :components && return Ptr{Ptr{lxb_css_syntax_cb_components_t}}(x + 0)
-    f === :func && return Ptr{Ptr{lxb_css_syntax_cb_function_t}}(x + 0)
-    f === :block && return Ptr{Ptr{lxb_css_syntax_cb_block_t}}(x + 0)
-    f === :pipe && return Ptr{Ptr{lxb_css_syntax_cb_pipe_t}}(x + 0)
-    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::__JL_Ctag_270, f::Symbol)
-    r = Ref{__JL_Ctag_270}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_270}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{__JL_Ctag_270}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-struct __JL_Ctag_271
-    data::NTuple{56,UInt8}
-end
-
-function Base.getproperty(x::Ptr{__JL_Ctag_271}, f::Symbol)
-    f === :list_rules && return Ptr{lxb_css_syntax_list_rules_offset_t}(x + 0)
-    f === :at_rule && return Ptr{lxb_css_syntax_at_rule_offset_t}(x + 0)
-    f === :qualified && return Ptr{lxb_css_syntax_qualified_offset_t}(x + 0)
-    f === :declarations && return Ptr{lxb_css_syntax_declarations_offset_t}(x + 0)
-    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::__JL_Ctag_271, f::Symbol)
-    r = Ref{__JL_Ctag_271}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_271}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{__JL_Ctag_271}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-struct lxb_css_syntax_rule
-    data::NTuple{136,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_syntax_rule}, f::Symbol)
-    f === :phase && return Ptr{lxb_css_syntax_state_f}(x + 0)
-    f === :state && return Ptr{lxb_css_parser_state_f}(x + 8)
-    f === :state_back && return Ptr{lxb_css_parser_state_f}(x + 16)
-    f === :back && return Ptr{lxb_css_syntax_state_f}(x + 24)
-    f === :cbx && return Ptr{__JL_Ctag_270}(x + 32)
-    f === :context && return Ptr{Ptr{Cvoid}}(x + 40)
-    f === :offset && return Ptr{Csize_t}(x + 48)
-    f === :deep && return Ptr{Csize_t}(x + 56)
-    f === :block_end && return Ptr{lxb_css_syntax_token_type_t}(x + 64)
-    f === :skip_ending && return Ptr{Bool}(x + 68)
-    f === :skip_consume && return Ptr{Bool}(x + 69)
-    f === :important && return Ptr{Bool}(x + 70)
-    f === :failed && return Ptr{Bool}(x + 71)
-    f === :top_level && return Ptr{Bool}(x + 72)
-    f === :u && return Ptr{__JL_Ctag_271}(x + 80)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_syntax_rule, f::Symbol)
-    r = Ref{lxb_css_syntax_rule}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_syntax_rule}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_syntax_rule}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-const lxb_css_syntax_rule_t = lxb_css_syntax_rule
-
-struct lxb_css_parser_state
-    state::lxb_css_parser_state_f
-    context::Ptr{Cvoid}
-    root::Bool
-end
-
-const lxb_css_parser_state_t = lxb_css_parser_state
-
-struct lxb_css_log_t
-    messages::lexbor_array_obj_t
-    mraw::Ptr{lexbor_mraw_t}
-    self_mraw::Bool
-end
-
-@cenum lxb_css_parser_stage_t::UInt32 begin
-    LXB_CSS_PARSER_CLEAN = 0
-    LXB_CSS_PARSER_RUN = 1
-    LXB_CSS_PARSER_STOP = 2
-    LXB_CSS_PARSER_END = 3
-end
-
-struct lxb_css_parser
-    block::lxb_css_parser_state_f
-    context::Ptr{Cvoid}
-    tkz::Ptr{lxb_css_syntax_tokenizer_t}
-    selectors::Ptr{lxb_css_selectors_t}
-    old_selectors::Ptr{lxb_css_selectors_t}
-    memory::Ptr{lxb_css_memory_t}
-    old_memory::Ptr{lxb_css_memory_t}
-    rules_begin::Ptr{lxb_css_syntax_rule_t}
-    rules_end::Ptr{lxb_css_syntax_rule_t}
-    rules::Ptr{lxb_css_syntax_rule_t}
-    states_begin::Ptr{lxb_css_parser_state_t}
-    states_end::Ptr{lxb_css_parser_state_t}
-    states::Ptr{lxb_css_parser_state_t}
-    types_begin::Ptr{lxb_css_syntax_token_type_t}
-    types_end::Ptr{lxb_css_syntax_token_type_t}
-    types_pos::Ptr{lxb_css_syntax_token_type_t}
-    chunk_cb::lxb_css_syntax_tokenizer_chunk_f
-    chunk_ctx::Ptr{Cvoid}
-    pos::Ptr{lxb_char_t}
-    offset::Csize_t
-    str::lexbor_str_t
-    str_size::Csize_t
-    log::Ptr{lxb_css_log_t}
-    stage::lxb_css_parser_stage_t
-    loop::Bool
-    fake_null::Bool
-    my_tkz::Bool
-    receive_endings::Bool
-    status::lxb_status_t
-end
-
-const lxb_css_parser_t = lxb_css_parser
-
-# typedef lxb_selectors_entry_t * ( * lxb_selectors_state_cb_f ) ( lxb_selectors_t * selectors , lxb_selectors_entry_t * entry )
-const lxb_selectors_state_cb_f = Ptr{Cvoid}
-
-struct lxb_selectors_entry
-    id::Csize_t
-    combinator::lxb_css_selector_combinator_t
-    selector::Ptr{lxb_css_selector_t}
-    node::Ptr{lxb_dom_node_t}
-    next::Ptr{Cvoid} # next::Ptr{lxb_selectors_entry_t}
-    prev::Ptr{Cvoid} # prev::Ptr{lxb_selectors_entry_t}
-    following::Ptr{Cvoid} # following::Ptr{lxb_selectors_entry_t}
-    nested::Ptr{Cvoid} # nested::Ptr{lxb_selectors_nested_t}
-end
-
-function Base.getproperty(x::lxb_selectors_entry, f::Symbol)
-    f === :next && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
-    f === :prev && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
-    f === :following && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
-    f === :nested && return Ptr{lxb_selectors_nested_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_selectors_entry_t = lxb_selectors_entry
-
-# typedef lxb_status_t ( * lxb_selectors_cb_f ) ( lxb_dom_node_t * node , lxb_css_selector_specificity_t spec , void * ctx )
-const lxb_selectors_cb_f = Ptr{Cvoid}
-
-struct lxb_selectors_nested
-    entry::Ptr{lxb_selectors_entry_t}
-    return_state::lxb_selectors_state_cb_f
-    cb::lxb_selectors_cb_f
-    ctx::Ptr{Cvoid}
-    root::Ptr{lxb_dom_node_t}
-    last::Ptr{lxb_selectors_entry_t}
-    parent::Ptr{Cvoid} # parent::Ptr{lxb_selectors_nested_t}
-    index::Csize_t
-    found::Bool
-end
-
-function Base.getproperty(x::lxb_selectors_nested, f::Symbol)
-    f === :parent && return Ptr{lxb_selectors_nested_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_selectors_nested_t = lxb_selectors_nested
-
-@cenum lxb_selectors_opt_t::UInt32 begin
-    LXB_SELECTORS_OPT_DEFAULT = 0
-    LXB_SELECTORS_OPT_MATCH_ROOT = 2
-    LXB_SELECTORS_OPT_MATCH_FIRST = 4
-end
-
-struct lxb_selectors
-    state::lxb_selectors_state_cb_f
-    objs::Ptr{lexbor_dobject_t}
-    nested::Ptr{lexbor_dobject_t}
-    current::Ptr{lxb_selectors_nested_t}
-    first::Ptr{lxb_selectors_entry_t}
-    options::lxb_selectors_opt_t
-    status::lxb_status_t
-end
-
-const lxb_selectors_t = lxb_selectors
-
-struct lexbor_avl
-    nodes::Ptr{lexbor_dobject_t}
-    last_right::Ptr{lexbor_avl_node_t}
-end
-
-const lexbor_avl_t = lexbor_avl
-
-struct lxb_html_document_css_t
-    memory::Ptr{lxb_css_memory_t}
-    css_selectors::Ptr{lxb_css_selectors_t}
-    parser::Ptr{lxb_css_parser_t}
-    selectors::Ptr{lxb_selectors_t}
-    styles::Ptr{lexbor_avl_t}
-    stylesheets::Ptr{lexbor_array_t}
-    weak::Ptr{lexbor_dobject_t}
-    customs::Ptr{lexbor_hash_t}
-    customs_id::Csize_t
-end
-
 # typedef lxb_status_t ( * lxb_html_document_done_cb_f ) ( lxb_html_document_t * document )
 const lxb_html_document_done_cb_f = Ptr{Cvoid}
 
@@ -949,6 +457,9 @@ const lxb_html_document_done_cb_f = Ptr{Cvoid}
     LXB_HTML_DOCUMENT_READY_STATE_COMPLETE = 3
 end
 
+# typedef lxb_status_t ( * lxb_html_document_open_elements_pop_f ) ( lxb_dom_node_t * node )
+const lxb_html_document_open_elements_pop_f = Ptr{Cvoid}
+
 const lxb_html_document_opt_t = Cuint
 
 struct lxb_html_document
@@ -956,10 +467,9 @@ struct lxb_html_document
     iframe_srcdoc::Ptr{Cvoid}
     head::Ptr{lxb_html_head_element_t}
     body::Ptr{lxb_html_body_element_t}
-    css::lxb_html_document_css_t
-    css_init::Bool
     done::lxb_html_document_done_cb_f
     ready_state::lxb_html_document_ready_state_t
+    open_pop::Ptr{lxb_html_document_open_elements_pop_f}
     opt::lxb_html_document_opt_t
 end
 
@@ -1207,6 +717,7 @@ const lxb_html_opt_group_element_t = lxb_html_opt_group_element
 
 struct lxb_html_option_element
     element::lxb_html_element_t
+    selectedness::Bool
 end
 
 const lxb_html_option_element_t = lxb_html_option_element
@@ -1265,6 +776,10 @@ end
 
 const lxb_html_select_element_t = lxb_html_select_element
 
+mutable struct lxb_html_selectedcontent_element end
+
+const lxb_html_selectedcontent_element_t = lxb_html_selectedcontent_element
+
 struct lxb_html_slot_element
     element::lxb_html_element_t
 end
@@ -1283,17 +798,9 @@ end
 
 const lxb_html_span_element_t = lxb_html_span_element
 
-struct lxb_css_stylesheet
-    root::Ptr{lxb_css_rule_t}
-    memory::Ptr{lxb_css_memory_t}
-    element::Ptr{Cvoid}
-end
-
-const lxb_css_stylesheet_t = lxb_css_stylesheet
-
 struct lxb_html_style_element
     element::lxb_html_element_t
-    stylesheet::Ptr{lxb_css_stylesheet_t}
+    stylesheet::Ptr{Cvoid}
 end
 
 const lxb_html_style_element_t = lxb_html_style_element
@@ -1390,312 +897,6 @@ end
 
 const lxb_html_window_t = lxb_html_window
 
-struct lxb_css_syntax_token_base
-    _begin::Ptr{lxb_char_t}
-    length::Csize_t
-    user_id::Csize_t
-end
-
-const lxb_css_syntax_token_base_t = lxb_css_syntax_token_base
-
-struct lxb_css_syntax_token_string
-    base::lxb_css_syntax_token_base_t
-    data::Ptr{lxb_char_t}
-    length::Csize_t
-end
-
-const lxb_css_syntax_token_string_t = lxb_css_syntax_token_string
-
-const lxb_css_syntax_token_ident_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_function_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_at_keyword_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_hash_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_bad_string_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_url_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_bad_url_t = lxb_css_syntax_token_string_t
-
-struct lxb_css_syntax_token_delim
-    base::lxb_css_syntax_token_base_t
-    character::lxb_char_t
-end
-
-const lxb_css_syntax_token_delim_t = lxb_css_syntax_token_delim
-
-struct lxb_css_syntax_token_number
-    base::lxb_css_syntax_token_base_t
-    num::Cdouble
-    is_float::Bool
-    have_sign::Bool
-end
-
-const lxb_css_syntax_token_number_t = lxb_css_syntax_token_number
-
-const lxb_css_syntax_token_percentage_t = lxb_css_syntax_token_number_t
-
-struct lxb_css_syntax_token_dimension
-    num::lxb_css_syntax_token_number_t
-    str::lxb_css_syntax_token_string_t
-end
-
-const lxb_css_syntax_token_dimension_t = lxb_css_syntax_token_dimension
-
-const lxb_css_syntax_token_whitespace_t = lxb_css_syntax_token_string_t
-
-const lxb_css_syntax_token_cdo_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_cdc_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_colon_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_semicolon_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_comma_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_ls_bracket_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_rs_bracket_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_l_parenthesis_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_r_parenthesis_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_lc_bracket_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_rc_bracket_t = lxb_css_syntax_token_base_t
-
-const lxb_css_syntax_token_comment_t = lxb_css_syntax_token_string_t
-
-struct lxb_css_rule_list
-    rule::lxb_css_rule_t
-    first::Ptr{lxb_css_rule_t}
-    last::Ptr{lxb_css_rule_t}
-end
-
-const lxb_css_rule_list_t = lxb_css_rule_list
-
-struct __JL_Ctag_269
-    data::NTuple{8,UInt8}
-end
-
-function Base.getproperty(x::Ptr{__JL_Ctag_269}, f::Symbol)
-    f === :undef && return Ptr{Ptr{lxb_css_at_rule__undef_t}}(x + 0)
-    f === :custom && return Ptr{Ptr{lxb_css_at_rule__custom_t}}(x + 0)
-    f === :media && return Ptr{Ptr{lxb_css_at_rule_media_t}}(x + 0)
-    f === :ns && return Ptr{Ptr{lxb_css_at_rule_namespace_t}}(x + 0)
-    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::__JL_Ctag_269, f::Symbol)
-    r = Ref{__JL_Ctag_269}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_269}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{__JL_Ctag_269}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-struct lxb_css_rule_at
-    data::NTuple{80,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_rule_at}, f::Symbol)
-    f === :rule && return Ptr{lxb_css_rule_t}(x + 0)
-    f === :type && return Ptr{Csize_t}(x + 64)
-    f === :u && return Ptr{__JL_Ctag_269}(x + 72)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_rule_at, f::Symbol)
-    r = Ref{lxb_css_rule_at}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_rule_at}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_rule_at}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-const lxb_css_rule_at_t = lxb_css_rule_at
-
-struct lxb_css_rule_style
-    rule::lxb_css_rule_t
-    selector::Ptr{lxb_css_selector_list_t}
-    declarations::Ptr{lxb_css_rule_declaration_list_t}
-end
-
-const lxb_css_rule_style_t = lxb_css_rule_style
-
-struct lxb_css_rule_bad_style
-    rule::lxb_css_rule_t
-    selectors::lexbor_str_t
-    declarations::Ptr{lxb_css_rule_declaration_list_t}
-end
-
-const lxb_css_rule_bad_style_t = lxb_css_rule_bad_style
-
-struct __JL_Ctag_278
-    data::NTuple{8,UInt8}
-end
-
-function Base.getproperty(x::Ptr{__JL_Ctag_278}, f::Symbol)
-    f === :undef && return Ptr{Ptr{lxb_css_property__undef_t}}(x + 0)
-    f === :custom && return Ptr{Ptr{lxb_css_property__custom_t}}(x + 0)
-    f === :display && return Ptr{Ptr{lxb_css_property_display_t}}(x + 0)
-    f === :order && return Ptr{Ptr{lxb_css_property_order_t}}(x + 0)
-    f === :visibility && return Ptr{Ptr{lxb_css_property_visibility_t}}(x + 0)
-    f === :width && return Ptr{Ptr{lxb_css_property_width_t}}(x + 0)
-    f === :height && return Ptr{Ptr{lxb_css_property_height_t}}(x + 0)
-    f === :box_sizing && return Ptr{Ptr{lxb_css_property_box_sizing_t}}(x + 0)
-    f === :margin && return Ptr{Ptr{lxb_css_property_margin_t}}(x + 0)
-    f === :margin_top && return Ptr{Ptr{lxb_css_property_margin_top_t}}(x + 0)
-    f === :margin_right && return Ptr{Ptr{lxb_css_property_margin_right_t}}(x + 0)
-    f === :margin_bottom && return Ptr{Ptr{lxb_css_property_margin_bottom_t}}(x + 0)
-    f === :margin_left && return Ptr{Ptr{lxb_css_property_margin_left_t}}(x + 0)
-    f === :padding && return Ptr{Ptr{lxb_css_property_padding_t}}(x + 0)
-    f === :padding_top && return Ptr{Ptr{lxb_css_property_padding_top_t}}(x + 0)
-    f === :padding_right && return Ptr{Ptr{lxb_css_property_padding_right_t}}(x + 0)
-    f === :padding_bottom && return Ptr{Ptr{lxb_css_property_padding_bottom_t}}(x + 0)
-    f === :padding_left && return Ptr{Ptr{lxb_css_property_padding_left_t}}(x + 0)
-    f === :border && return Ptr{Ptr{lxb_css_property_border_t}}(x + 0)
-    f === :border_top && return Ptr{Ptr{lxb_css_property_border_top_t}}(x + 0)
-    f === :border_right && return Ptr{Ptr{lxb_css_property_border_right_t}}(x + 0)
-    f === :border_bottom && return Ptr{Ptr{lxb_css_property_border_bottom_t}}(x + 0)
-    f === :border_left && return Ptr{Ptr{lxb_css_property_border_left_t}}(x + 0)
-    f === :border_top_color && return Ptr{Ptr{lxb_css_property_border_top_color_t}}(x + 0)
-    f === :border_right_color &&
-        return Ptr{Ptr{lxb_css_property_border_right_color_t}}(x + 0)
-    f === :border_bottom_color &&
-        return Ptr{Ptr{lxb_css_property_border_bottom_color_t}}(x + 0)
-    f === :border_left_color && return Ptr{Ptr{lxb_css_property_border_left_color_t}}(x + 0)
-    f === :background_color && return Ptr{Ptr{lxb_css_property_background_color_t}}(x + 0)
-    f === :color && return Ptr{Ptr{lxb_css_property_color_t}}(x + 0)
-    f === :opacity && return Ptr{Ptr{lxb_css_property_opacity_t}}(x + 0)
-    f === :position && return Ptr{Ptr{lxb_css_property_position_t}}(x + 0)
-    f === :top && return Ptr{Ptr{lxb_css_property_top_t}}(x + 0)
-    f === :right && return Ptr{Ptr{lxb_css_property_right_t}}(x + 0)
-    f === :bottom && return Ptr{Ptr{lxb_css_property_bottom_t}}(x + 0)
-    f === :left && return Ptr{Ptr{lxb_css_property_left_t}}(x + 0)
-    f === :inset_block_start && return Ptr{Ptr{lxb_css_property_inset_block_start_t}}(x + 0)
-    f === :inset_inline_start &&
-        return Ptr{Ptr{lxb_css_property_inset_inline_start_t}}(x + 0)
-    f === :inset_block_end && return Ptr{Ptr{lxb_css_property_inset_block_end_t}}(x + 0)
-    f === :inset_inline_end && return Ptr{Ptr{lxb_css_property_inset_inline_end_t}}(x + 0)
-    f === :text_transform && return Ptr{Ptr{lxb_css_property_text_transform_t}}(x + 0)
-    f === :text_align && return Ptr{Ptr{lxb_css_property_text_align_t}}(x + 0)
-    f === :text_align_all && return Ptr{Ptr{lxb_css_property_text_align_all_t}}(x + 0)
-    f === :text_align_last && return Ptr{Ptr{lxb_css_property_text_align_last_t}}(x + 0)
-    f === :text_justify && return Ptr{Ptr{lxb_css_property_text_justify_t}}(x + 0)
-    f === :text_indent && return Ptr{Ptr{lxb_css_property_text_indent_t}}(x + 0)
-    f === :white_space && return Ptr{Ptr{lxb_css_property_white_space_t}}(x + 0)
-    f === :tab_size && return Ptr{Ptr{lxb_css_property_tab_size_t}}(x + 0)
-    f === :word_break && return Ptr{Ptr{lxb_css_property_word_break_t}}(x + 0)
-    f === :line_break && return Ptr{Ptr{lxb_css_property_line_break_t}}(x + 0)
-    f === :hyphens && return Ptr{Ptr{lxb_css_property_hyphens_t}}(x + 0)
-    f === :overflow_wrap && return Ptr{Ptr{lxb_css_property_overflow_wrap_t}}(x + 0)
-    f === :word_wrap && return Ptr{Ptr{lxb_css_property_word_wrap_t}}(x + 0)
-    f === :word_spacing && return Ptr{Ptr{lxb_css_property_word_spacing_t}}(x + 0)
-    f === :letter_spacing && return Ptr{Ptr{lxb_css_property_letter_spacing_t}}(x + 0)
-    f === :hanging_punctuation &&
-        return Ptr{Ptr{lxb_css_property_hanging_punctuation_t}}(x + 0)
-    f === :font_family && return Ptr{Ptr{lxb_css_property_font_family_t}}(x + 0)
-    f === :font_weight && return Ptr{Ptr{lxb_css_property_font_weight_t}}(x + 0)
-    f === :font_stretch && return Ptr{Ptr{lxb_css_property_font_stretch_t}}(x + 0)
-    f === :font_style && return Ptr{Ptr{lxb_css_property_font_style_t}}(x + 0)
-    f === :font_size && return Ptr{Ptr{lxb_css_property_font_size_t}}(x + 0)
-    f === :float_reference && return Ptr{Ptr{lxb_css_property_float_reference_t}}(x + 0)
-    f === :floatp && return Ptr{Ptr{lxb_css_property_float_t}}(x + 0)
-    f === :clear && return Ptr{Ptr{lxb_css_property_clear_t}}(x + 0)
-    f === :float_defer && return Ptr{Ptr{lxb_css_property_float_defer_t}}(x + 0)
-    f === :float_offset && return Ptr{Ptr{lxb_css_property_float_offset_t}}(x + 0)
-    f === :wrap_flow && return Ptr{Ptr{lxb_css_property_wrap_flow_t}}(x + 0)
-    f === :wrap_through && return Ptr{Ptr{lxb_css_property_wrap_through_t}}(x + 0)
-    f === :flex_direction && return Ptr{Ptr{lxb_css_property_flex_direction_t}}(x + 0)
-    f === :flex_wrap && return Ptr{Ptr{lxb_css_property_flex_wrap_t}}(x + 0)
-    f === :flex_flow && return Ptr{Ptr{lxb_css_property_flex_flow_t}}(x + 0)
-    f === :flex && return Ptr{Ptr{lxb_css_property_flex_t}}(x + 0)
-    f === :flex_grow && return Ptr{Ptr{lxb_css_property_flex_grow_t}}(x + 0)
-    f === :flex_shrink && return Ptr{Ptr{lxb_css_property_flex_shrink_t}}(x + 0)
-    f === :flex_basis && return Ptr{Ptr{lxb_css_property_flex_basis_t}}(x + 0)
-    f === :justify_content && return Ptr{Ptr{lxb_css_property_justify_content_t}}(x + 0)
-    f === :align_items && return Ptr{Ptr{lxb_css_property_align_items_t}}(x + 0)
-    f === :align_self && return Ptr{Ptr{lxb_css_property_align_self_t}}(x + 0)
-    f === :align_content && return Ptr{Ptr{lxb_css_property_align_content_t}}(x + 0)
-    f === :dominant_baseline && return Ptr{Ptr{lxb_css_property_dominant_baseline_t}}(x + 0)
-    f === :vertical_align && return Ptr{Ptr{lxb_css_property_vertical_align_t}}(x + 0)
-    f === :baseline_source && return Ptr{Ptr{lxb_css_property_baseline_source_t}}(x + 0)
-    f === :alignment_baseline &&
-        return Ptr{Ptr{lxb_css_property_alignment_baseline_t}}(x + 0)
-    f === :baseline_shift && return Ptr{Ptr{lxb_css_property_baseline_shift_t}}(x + 0)
-    f === :line_height && return Ptr{Ptr{lxb_css_property_line_height_t}}(x + 0)
-    f === :z_index && return Ptr{Ptr{lxb_css_property_z_index_t}}(x + 0)
-    f === :direction && return Ptr{Ptr{lxb_css_property_direction_t}}(x + 0)
-    f === :unicode_bidi && return Ptr{Ptr{lxb_css_property_unicode_bidi_t}}(x + 0)
-    f === :writing_mode && return Ptr{Ptr{lxb_css_property_writing_mode_t}}(x + 0)
-    f === :text_orientation && return Ptr{Ptr{lxb_css_property_text_orientation_t}}(x + 0)
-    f === :text_combine_upright &&
-        return Ptr{Ptr{lxb_css_property_text_combine_upright_t}}(x + 0)
-    f === :overflow_x && return Ptr{Ptr{lxb_css_property_overflow_x_t}}(x + 0)
-    f === :overflow_y && return Ptr{Ptr{lxb_css_property_overflow_y_t}}(x + 0)
-    f === :overflow_block && return Ptr{Ptr{lxb_css_property_overflow_block_t}}(x + 0)
-    f === :overflow_inline && return Ptr{Ptr{lxb_css_property_overflow_inline_t}}(x + 0)
-    f === :text_overflow && return Ptr{Ptr{lxb_css_property_text_overflow_t}}(x + 0)
-    f === :text_decoration_line &&
-        return Ptr{Ptr{lxb_css_property_text_decoration_line_t}}(x + 0)
-    f === :text_decoration_style &&
-        return Ptr{Ptr{lxb_css_property_text_decoration_style_t}}(x + 0)
-    f === :text_decoration_color &&
-        return Ptr{Ptr{lxb_css_property_text_decoration_color_t}}(x + 0)
-    f === :text_decoration && return Ptr{Ptr{lxb_css_property_text_decoration_t}}(x + 0)
-    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::__JL_Ctag_278, f::Symbol)
-    r = Ref{__JL_Ctag_278}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_278}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{__JL_Ctag_278}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-struct lxb_css_rule_declaration
-    data::NTuple{88,UInt8}
-end
-
-function Base.getproperty(x::Ptr{lxb_css_rule_declaration}, f::Symbol)
-    f === :rule && return Ptr{lxb_css_rule_t}(x + 0)
-    f === :type && return Ptr{Csize_t}(x + 64)
-    f === :u && return Ptr{__JL_Ctag_278}(x + 72)
-    f === :important && return Ptr{Bool}(x + 80)
-    return getfield(x, f)
-end
-
-function Base.getproperty(x::lxb_css_rule_declaration, f::Symbol)
-    r = Ref{lxb_css_rule_declaration}(x)
-    ptr = Base.unsafe_convert(Ptr{lxb_css_rule_declaration}, r)
-    fptr = getproperty(ptr, f)
-    GC.@preserve r unsafe_load(fptr)
-end
-
-function Base.setproperty!(x::Ptr{lxb_css_rule_declaration}, f::Symbol, v)
-    unsafe_store!(getproperty(x, f), v)
-end
-
-const lxb_css_rule_declaration_t = lxb_css_rule_declaration
-
 # typedef const lxb_char_t * ( * lxb_html_tokenizer_state_f ) ( lxb_html_tokenizer_t * tkz , const lxb_char_t * data , const lxb_char_t * end )
 const lxb_html_tokenizer_state_f = Ptr{Cvoid}
 
@@ -1703,10 +904,34 @@ const lxb_html_tokenizer_state_f = Ptr{Cvoid}
 const lxb_html_tokenizer_token_f = Ptr{Cvoid}
 
 struct lxb_dom_attr_data_t
-    entry::lexbor_hash_entry_t
-    attr_id::lxb_dom_attr_id_t
-    ref_count::Csize_t
-    read_only::Bool
+    data::NTuple{64,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_dom_attr_data_t}, f::Symbol)
+    f === :entry && return Ptr{lexbor_hash_entry_t}(x + 0)
+    f === :attr_id && return Ptr{lxb_dom_attr_id_t}(x + 40)
+    f === :ref_count && return Ptr{Csize_t}(x + 48)
+    f === :read_only && return Ptr{Bool}(x + 56)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_dom_attr_data_t, f::Symbol)
+    r = Ref{lxb_dom_attr_data_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_dom_attr_data_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_dom_attr_data_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_dom_attr_data_t, private::Bool = false)
+    (:entry, :attr_id, :ref_count, :read_only, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 const lxb_html_token_attr_type_t = Cint
@@ -1749,6 +974,13 @@ struct lxb_html_token_t
     type::lxb_html_token_type_t
 end
 
+struct lexbor_array_obj_t
+    list::Ptr{UInt8}
+    size::Csize_t
+    length::Csize_t
+    struct_size::Csize_t
+end
+
 struct lxb_html_tree_pending_table_t
     text_list::Ptr{lexbor_array_obj_t}
     have_non_ws::Bool
@@ -1759,6 +991,8 @@ const lxb_html_tree_insertion_mode_f = Ptr{Cvoid}
 
 # typedef lxb_status_t ( * lxb_html_tree_append_attr_f ) ( lxb_html_tree_t * tree , lxb_dom_attr_t * attr , void * ctx )
 const lxb_html_tree_append_attr_f = Ptr{Cvoid}
+
+const lxb_status_t = Cuint
 
 struct lxb_html_tree
     tkz_ref::Ptr{Cvoid} # tkz_ref::Ptr{lxb_html_tokenizer_t}
@@ -1830,6 +1064,8 @@ struct lxb_html_tokenizer
     opt::lxb_html_tokenizer_opt_t
     status::lxb_status_t
     is_eof::Bool
+    utf8_buf::NTuple{4,lxb_char_t}
+    utf8_buf_len::Cuint
     base::Ptr{Cvoid} # base::Ptr{lxb_html_tokenizer_t}
     ref_count::Csize_t
 end
@@ -1842,10 +1078,34 @@ end
 const lxb_html_tokenizer_t = lxb_html_tokenizer
 
 struct lxb_tag_data_t
-    entry::lexbor_hash_entry_t
-    tag_id::lxb_tag_id_t
-    ref_count::Csize_t
-    read_only::Bool
+    data::NTuple{64,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_tag_data_t}, f::Symbol)
+    f === :entry && return Ptr{lexbor_hash_entry_t}(x + 0)
+    f === :tag_id && return Ptr{lxb_tag_id_t}(x + 40)
+    f === :ref_count && return Ptr{Csize_t}(x + 48)
+    f === :read_only && return Ptr{Bool}(x + 56)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_tag_data_t, f::Symbol)
+    r = Ref{lxb_tag_data_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_tag_data_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_tag_data_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_tag_data_t, private::Bool = false)
+    (:entry, :tag_id, :ref_count, :read_only, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 const lxb_codepoint_t = UInt32
@@ -1887,6 +1147,7 @@ const lexbor_memory_free_f = Ptr{Cvoid}
     LXB_STATUS_NEXT = 18
     LXB_STATUS_STOP = 19
     LXB_STATUS_WARNING = 20
+    LXB_STATUS_SKIPPED = 21
 end
 
 @cenum lexbor_action_t::UInt32 begin
@@ -1904,7 +1165,7 @@ const lexbor_serialize_cb_cp_f = Ptr{Cvoid}
 struct lexbor_serialize_ctx_t
     cb::lexbor_serialize_cb_f
     ctx::Ptr{Cvoid}
-    opt::intptr_t
+    opt::Cptrdiff_t
     count::Csize_t
 end
 
@@ -1969,17 +1230,65 @@ const lxb_ns_prefix_id_t = Csize_t
 end
 
 struct lxb_ns_data_t
-    entry::lexbor_hash_entry_t
-    ns_id::lxb_ns_id_t
-    ref_count::Csize_t
-    read_only::Bool
+    data::NTuple{64,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_ns_data_t}, f::Symbol)
+    f === :entry && return Ptr{lexbor_hash_entry_t}(x + 0)
+    f === :ns_id && return Ptr{lxb_ns_id_t}(x + 40)
+    f === :ref_count && return Ptr{Csize_t}(x + 48)
+    f === :read_only && return Ptr{Bool}(x + 56)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_ns_data_t, f::Symbol)
+    r = Ref{lxb_ns_data_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_ns_data_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_ns_data_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_ns_data_t, private::Bool = false)
+    (:entry, :ns_id, :ref_count, :read_only, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_ns_prefix_data_t
-    entry::lexbor_hash_entry_t
-    prefix_id::lxb_ns_prefix_id_t
-    ref_count::Csize_t
-    read_only::Bool
+    data::NTuple{64,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_ns_prefix_data_t}, f::Symbol)
+    f === :entry && return Ptr{lexbor_hash_entry_t}(x + 0)
+    f === :prefix_id && return Ptr{lxb_ns_prefix_id_t}(x + 40)
+    f === :ref_count && return Ptr{Csize_t}(x + 48)
+    f === :read_only && return Ptr{Bool}(x + 56)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_ns_prefix_data_t, f::Symbol)
+    r = Ref{lxb_ns_prefix_data_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_ns_prefix_data_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_ns_prefix_data_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_ns_prefix_data_t, private::Bool = false)
+    (:entry, :prefix_id, :ref_count, :read_only, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 @cenum lxb_tag_id_enum_t::UInt32 begin
@@ -1989,6 +1298,7 @@ end
     LXB_TAG__DOCUMENT = 3
     LXB_TAG__EM_COMMENT = 4
     LXB_TAG__EM_DOCTYPE = 5
+    LXB_TAG__BEGIN = 6
     LXB_TAG_A = 6
     LXB_TAG_ABBR = 7
     LXB_TAG_ACRONYM = 8
@@ -2145,69 +1455,43 @@ end
     LXB_TAG_S = 159
     LXB_TAG_SAMP = 160
     LXB_TAG_SCRIPT = 161
-    LXB_TAG_SECTION = 162
-    LXB_TAG_SELECT = 163
-    LXB_TAG_SLOT = 164
-    LXB_TAG_SMALL = 165
-    LXB_TAG_SOURCE = 166
-    LXB_TAG_SPACER = 167
-    LXB_TAG_SPAN = 168
-    LXB_TAG_STRIKE = 169
-    LXB_TAG_STRONG = 170
-    LXB_TAG_STYLE = 171
-    LXB_TAG_SUB = 172
-    LXB_TAG_SUMMARY = 173
-    LXB_TAG_SUP = 174
-    LXB_TAG_SVG = 175
-    LXB_TAG_TABLE = 176
-    LXB_TAG_TBODY = 177
-    LXB_TAG_TD = 178
-    LXB_TAG_TEMPLATE = 179
-    LXB_TAG_TEXTAREA = 180
-    LXB_TAG_TEXTPATH = 181
-    LXB_TAG_TFOOT = 182
-    LXB_TAG_TH = 183
-    LXB_TAG_THEAD = 184
-    LXB_TAG_TIME = 185
-    LXB_TAG_TITLE = 186
-    LXB_TAG_TR = 187
-    LXB_TAG_TRACK = 188
-    LXB_TAG_TT = 189
-    LXB_TAG_U = 190
-    LXB_TAG_UL = 191
-    LXB_TAG_VAR = 192
-    LXB_TAG_VIDEO = 193
-    LXB_TAG_WBR = 194
-    LXB_TAG_XMP = 195
-    LXB_TAG__LAST_ENTRY = 196
-end
-
-@cenum lxb_dom_exception_code_t::UInt32 begin
-    LXB_DOM_INDEX_SIZE_ERR = 0
-    LXB_DOM_DOMSTRING_SIZE_ERR = 1
-    LXB_DOM_HIERARCHY_REQUEST_ERR = 2
-    LXB_DOM_WRONG_DOCUMENT_ERR = 3
-    LXB_DOM_INVALID_CHARACTER_ERR = 4
-    LXB_DOM_NO_DATA_ALLOWED_ERR = 5
-    LXB_DOM_NO_MODIFICATION_ALLOWED_ERR = 6
-    LXB_DOM_NOT_FOUND_ERR = 7
-    LXB_DOM_NOT_SUPPORTED_ERR = 8
-    LXB_DOM_INUSE_ATTRIBUTE_ERR = 9
-    LXB_DOM_INVALID_STATE_ERR = 10
-    LXB_DOM_SYNTAX_ERR = 11
-    LXB_DOM_INVALID_MODIFICATION_ERR = 12
-    LXB_DOM_NAMESPACE_ERR = 13
-    LXB_DOM_INVALID_ACCESS_ERR = 14
-    LXB_DOM_VALIDATION_ERR = 15
-    LXB_DOM_TYPE_MISMATCH_ERR = 16
-    LXB_DOM_SECURITY_ERR = 17
-    LXB_DOM_NETWORK_ERR = 18
-    LXB_DOM_ABORT_ERR = 19
-    LXB_DOM_URL_MISMATCH_ERR = 20
-    LXB_DOM_QUOTA_EXCEEDED_ERR = 21
-    LXB_DOM_TIMEOUT_ERR = 22
-    LXB_DOM_INVALID_NODE_TYPE_ERR = 23
-    LXB_DOM_DATA_CLONE_ERR = 24
+    LXB_TAG_SEARCH = 162
+    LXB_TAG_SECTION = 163
+    LXB_TAG_SELECT = 164
+    LXB_TAG_SELECTEDCONTENT = 165
+    LXB_TAG_SLOT = 166
+    LXB_TAG_SMALL = 167
+    LXB_TAG_SOURCE = 168
+    LXB_TAG_SPACER = 169
+    LXB_TAG_SPAN = 170
+    LXB_TAG_STRIKE = 171
+    LXB_TAG_STRONG = 172
+    LXB_TAG_STYLE = 173
+    LXB_TAG_SUB = 174
+    LXB_TAG_SUMMARY = 175
+    LXB_TAG_SUP = 176
+    LXB_TAG_SVG = 177
+    LXB_TAG_TABLE = 178
+    LXB_TAG_TBODY = 179
+    LXB_TAG_TD = 180
+    LXB_TAG_TEMPLATE = 181
+    LXB_TAG_TEXTAREA = 182
+    LXB_TAG_TEXTPATH = 183
+    LXB_TAG_TFOOT = 184
+    LXB_TAG_TH = 185
+    LXB_TAG_THEAD = 186
+    LXB_TAG_TIME = 187
+    LXB_TAG_TITLE = 188
+    LXB_TAG_TR = 189
+    LXB_TAG_TRACK = 190
+    LXB_TAG_TT = 191
+    LXB_TAG_U = 192
+    LXB_TAG_UL = 193
+    LXB_TAG_VAR = 194
+    LXB_TAG_VIDEO = 195
+    LXB_TAG_WBR = 196
+    LXB_TAG_XMP = 197
+    LXB_TAG__LAST_ENTRY = 198
 end
 
 const lxb_dom_interface_t = Cvoid
@@ -2223,8 +1507,63 @@ struct lxb_dom_collection_t
     document::Ptr{lxb_dom_document_t}
 end
 
+@cenum lxb_dom_exception_code_t::Int32 begin
+    LXB_DOM_EXCEPTION_OK = -1
+    LXB_DOM_EXCEPTION_ERR = 0
+    LXB_DOM_EXCEPTION_INDEX_SIZE_ERR = 1
+    LXB_DOM_EXCEPTION_DOMSTRING_SIZE_ERR = 2
+    LXB_DOM_EXCEPTION_HIERARCHY_REQUEST_ERR = 3
+    LXB_DOM_EXCEPTION_WRONG_DOCUMENT_ERR = 4
+    LXB_DOM_EXCEPTION_INVALID_CHARACTER_ERR = 5
+    LXB_DOM_EXCEPTION_NO_DATA_ALLOWED_ERR = 6
+    LXB_DOM_EXCEPTION_NO_MODIFICATION_ALLOWED_ERR = 7
+    LXB_DOM_EXCEPTION_NOT_FOUND_ERR = 8
+    LXB_DOM_EXCEPTION_NOT_SUPPORTED_ERR = 9
+    LXB_DOM_EXCEPTION_INUSE_ATTRIBUTE_ERR = 10
+    LXB_DOM_EXCEPTION_INVALID_STATE_ERR = 11
+    LXB_DOM_EXCEPTION_SYNTAX_ERR = 12
+    LXB_DOM_EXCEPTION_INVALID_MODIFICATION_ERR = 13
+    LXB_DOM_EXCEPTION_NAMESPACE_ERR = 14
+    LXB_DOM_EXCEPTION_INVALID_ACCESS_ERR = 15
+    LXB_DOM_EXCEPTION_VALIDATION_ERR = 16
+    LXB_DOM_EXCEPTION_TYPE_MISMATCH_ERR = 17
+    LXB_DOM_EXCEPTION_SECURITY_ERR = 18
+    LXB_DOM_EXCEPTION_NETWORK_ERR = 19
+    LXB_DOM_EXCEPTION_ABORT_ERR = 20
+    LXB_DOM_EXCEPTION_URL_MISMATCH_ERR = 21
+    LXB_DOM_EXCEPTION_QUOTA_EXCEEDED_ERR = 22
+    LXB_DOM_EXCEPTION_TIMEOUT_ERR = 23
+    LXB_DOM_EXCEPTION_INVALID_NODE_TYPE_ERR = 24
+    LXB_DOM_EXCEPTION_DATA_CLONE_ERR = 25
+    LXB_DOM_EXCEPTION_ENCODING_ERR = 26
+    LXB_DOM_EXCEPTION_NOT_READABLE_ERR = 27
+    LXB_DOM_EXCEPTION_UNKNOWN_ERR = 28
+    LXB_DOM_EXCEPTION_CONSTRAINT_ERR = 29
+    LXB_DOM_EXCEPTION_DATA_ERR = 30
+    LXB_DOM_EXCEPTION_TRANSACTION_INACTIVE_ERR = 31
+    LXB_DOM_EXCEPTION_READ_ONLY_ERR = 32
+    LXB_DOM_EXCEPTION_VERSION_ERR = 33
+    LXB_DOM_EXCEPTION_OPERATION_ERR = 34
+    LXB_DOM_EXCEPTION_NOT_ALLOWED_ERR = 35
+    LXB_DOM_EXCEPTION_OPT_OUT_ERR = 36
+    LXB_DOM_EXCEPTION__LAST_ENTRY = 37
+end
+
+struct lxb_dom_exception_t
+    name::lexbor_str_t
+    message::lexbor_str_t
+    code::lxb_dom_exception_code_t
+    document::Ptr{lxb_dom_document_t}
+end
+
 # typedef lexbor_action_t ( * lxb_dom_node_simple_walker_f ) ( lxb_dom_node_t * node , void * ctx )
 const lxb_dom_node_simple_walker_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_dom_node_descendants_f ) ( lxb_dom_node_t * node , void * ctx )
+const lxb_dom_node_descendants_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_dom_node_cb_set_value_f ) ( lxb_dom_node_t * node , const lxb_char_t * value , size_t length )
+const lxb_dom_node_cb_set_value_f = Ptr{Cvoid}
 
 function lxb_dom_node_text_content(node, len)
     @ccall liblexbor.lxb_dom_node_text_content(
@@ -2269,22 +1608,24 @@ end
     LXB_DOM_ATTR_ID = 18
     LXB_DOM_ATTR_IS = 19
     LXB_DOM_ATTR_MAXLENGTH = 20
-    LXB_DOM_ATTR_PLACEHOLDER = 21
-    LXB_DOM_ATTR_POOL = 22
-    LXB_DOM_ATTR_PUBLIC = 23
-    LXB_DOM_ATTR_READONLY = 24
-    LXB_DOM_ATTR_REQUIRED = 25
-    LXB_DOM_ATTR_SCHEME = 26
-    LXB_DOM_ATTR_SELECTED = 27
-    LXB_DOM_ATTR_SIZE = 28
-    LXB_DOM_ATTR_SLOT = 29
-    LXB_DOM_ATTR_SRC = 30
-    LXB_DOM_ATTR_STYLE = 31
-    LXB_DOM_ATTR_SYSTEM = 32
-    LXB_DOM_ATTR_TITLE = 33
-    LXB_DOM_ATTR_TYPE = 34
-    LXB_DOM_ATTR_WIDTH = 35
-    LXB_DOM_ATTR__LAST_ENTRY = 36
+    LXB_DOM_ATTR_MULTIPLE = 21
+    LXB_DOM_ATTR_PLACEHOLDER = 22
+    LXB_DOM_ATTR_POOL = 23
+    LXB_DOM_ATTR_PUBLIC = 24
+    LXB_DOM_ATTR_READONLY = 25
+    LXB_DOM_ATTR_REQUIRED = 26
+    LXB_DOM_ATTR_SCHEME = 27
+    LXB_DOM_ATTR_SELECTED = 28
+    LXB_DOM_ATTR_SIZE = 29
+    LXB_DOM_ATTR_SLOT = 30
+    LXB_DOM_ATTR_SRC = 31
+    LXB_DOM_ATTR_STYLE = 32
+    LXB_DOM_ATTR_SYSTEM = 33
+    LXB_DOM_ATTR_TITLE = 34
+    LXB_DOM_ATTR_TYPE = 35
+    LXB_DOM_ATTR_WIDTH = 36
+    LXB_DOM_ATTR_XMLNS = 37
+    LXB_DOM_ATTR__LAST_ENTRY = 38
 end
 
 function lxb_dom_attr_qualified_name(attr, len)
@@ -2359,13 +1700,25 @@ end
     LXB_HTML_RULES_ERROR_DOTOINFRMO = 33
     LXB_HTML_RULES_ERROR_DOTOAFFRMO = 34
     LXB_HTML_RULES_ERROR_DOTOFOCOMO = 35
-    LXB_HTML_RULES_ERROR_LAST_ENTRY = 36
+    LXB_HTML_RULES_ERROR_SEINSC = 36
+    LXB_HTML_RULES_ERROR_FRPASEINCOPAIN = 37
+    LXB_HTML_RULES_ERROR_FRPASEINCOPASE = 38
+    LXB_HTML_RULES_ERROR_HRPASEOPOPINSC = 39
+    LXB_HTML_RULES_ERROR_OPPAOPINSC = 40
+    LXB_HTML_RULES_ERROR_OPPAOPOPINSC = 41
+    LXB_HTML_RULES_ERROR_LAST_ENTRY = 42
 end
 
 struct lxb_html_tree_error_t
     id::lxb_html_tree_error_id_t
     _begin::Ptr{lxb_char_t}
     _end::Ptr{lxb_char_t}
+end
+
+@cenum __JL_Ctag_1::UInt32 begin
+    LXB_HTML_TOKENIZER_OPT_UNDEF = 0
+    LXB_HTML_TOKENIZER_OPT_VALIDATE_INPUT = 8
+    LXB_HTML_TOKENIZER_OPT_ATTR_KEEP_DUPLICATE = 16
 end
 
 @cenum lxb_html_tokenizer_error_id_t::UInt32 begin
@@ -2470,8 +1823,1270 @@ function lxb_html_tokenizer_tags_noi(tkz)
     )::Ptr{lexbor_hash_t}
 end
 
+mutable struct lxb_html_search_element end
+
+const lxb_html_search_element_t = lxb_html_search_element
+
+struct lexbor_avl
+    nodes::Ptr{lexbor_dobject_t}
+    last_right::Ptr{lexbor_avl_node_t}
+end
+
+const lexbor_avl_t = lexbor_avl
+
 # typedef lxb_status_t ( * lexbor_avl_node_f ) ( lexbor_avl_t * avl , lexbor_avl_node_t * * root , lexbor_avl_node_t * node , void * ctx )
 const lexbor_avl_node_f = Ptr{Cvoid}
+
+function lxb_dom_element_qualified_name(element, len)
+    @ccall liblexbor.lxb_dom_element_qualified_name(
+        element::Ptr{lxb_dom_element_t},
+        len::Ptr{Csize_t},
+    )::Ptr{lxb_char_t}
+end
+
+function lxb_dom_element_first_attribute_noi(element)
+    @ccall liblexbor.lxb_dom_element_first_attribute_noi(
+        element::Ptr{lxb_dom_element_t},
+    )::Ptr{lxb_dom_attr_t}
+end
+
+function lxb_dom_element_next_attribute_noi(attr)
+    @ccall liblexbor.lxb_dom_element_next_attribute_noi(
+        attr::Ptr{lxb_dom_attr_t},
+    )::Ptr{lxb_dom_attr_t}
+end
+
+@cenum lxb_dom_document_opt::UInt32 begin
+    LXB_DOM_DOCUMENT_OPT_UNDEF = 0
+    LXB_DOM_DOCUMENT_OPT_WO_EVENTS = 1
+end
+
+@cenum lxb_html_document_opt::UInt32 begin
+    LXB_HTML_DOCUMENT_OPT_UNDEF = 0
+end
+
+function lxb_html_document_destroy(document)
+    @ccall liblexbor.lxb_html_document_destroy(
+        document::Ptr{lxb_html_document_t},
+    )::Ptr{lxb_html_document_t}
+end
+
+const lxb_html_tag_category_t = Cint
+
+@cenum lxb_html_tag_category::UInt32 begin
+    LXB_HTML_TAG_CATEGORY__UNDEF = 0
+    LXB_HTML_TAG_CATEGORY_ORDINARY = 1
+    LXB_HTML_TAG_CATEGORY_SPECIAL = 2
+    LXB_HTML_TAG_CATEGORY_FORMATTING = 4
+    LXB_HTML_TAG_CATEGORY_SCOPE = 8
+    LXB_HTML_TAG_CATEGORY_SCOPE_LIST_ITEM = 16
+    LXB_HTML_TAG_CATEGORY_SCOPE_BUTTON = 32
+    LXB_HTML_TAG_CATEGORY_SCOPE_TABLE = 64
+end
+
+struct lxb_html_tag_fixname_t
+    name::Ptr{lxb_char_t}
+    len::Cuint
+end
+
+@cenum lxb_html_tree_insertion_position_t::UInt32 begin
+    LXB_HTML_TREE_INSERTION_POSITION_CHILD = 0
+    LXB_HTML_TREE_INSERTION_POSITION_BEFORE = 1
+end
+
+struct lxb_html_tree_template_insertion_t
+    mode::lxb_html_tree_insertion_mode_f
+end
+
+@cenum lxb_html_parser_state_t::UInt32 begin
+    LXB_HTML_PARSER_STATE_BEGIN = 0
+    LXB_HTML_PARSER_STATE_PROCESS = 1
+    LXB_HTML_PARSER_STATE_END = 2
+    LXB_HTML_PARSER_STATE_FRAGMENT_PROCESS = 3
+    LXB_HTML_PARSER_STATE_ERROR = 4
+end
+
+struct lxb_html_parser_t
+    tkz::Ptr{lxb_html_tokenizer_t}
+    tree::Ptr{lxb_html_tree_t}
+    original_tree::Ptr{lxb_html_tree_t}
+    root::Ptr{lxb_dom_node_t}
+    form::Ptr{lxb_dom_node_t}
+    state::lxb_html_parser_state_t
+    status::lxb_status_t
+    dom_opt::lxb_dom_document_opt_t
+    ref_count::Csize_t
+end
+
+function lxb_html_parser_create()
+    @ccall liblexbor.lxb_html_parser_create()::Ptr{lxb_html_parser_t}
+end
+
+function lxb_html_parser_init(parser)
+    @ccall liblexbor.lxb_html_parser_init(parser::Ptr{lxb_html_parser_t})::lxb_status_t
+end
+
+function lxb_html_parser_destroy(parser)
+    @ccall liblexbor.lxb_html_parser_destroy(
+        parser::Ptr{lxb_html_parser_t},
+    )::Ptr{lxb_html_parser_t}
+end
+
+function lxb_html_parse(parser, html, size)
+    @ccall liblexbor.lxb_html_parse(
+        parser::Ptr{lxb_html_parser_t},
+        html::Ptr{lxb_char_t},
+        size::Csize_t,
+    )::Ptr{lxb_html_document_t}
+end
+
+struct lxb_html_encoding_entry_t
+    name::Ptr{lxb_char_t}
+    _end::Ptr{lxb_char_t}
+end
+
+struct lxb_html_encoding_t
+    cache::lexbor_array_obj_t
+    result::lexbor_array_obj_t
+end
+
+const lxb_html_serialize_opt_t = Cint
+
+@cenum lxb_html_serialize_opt::UInt32 begin
+    LXB_HTML_SERIALIZE_OPT_UNDEF = 0
+    LXB_HTML_SERIALIZE_OPT_SKIP_WS_NODES = 1
+    LXB_HTML_SERIALIZE_OPT_SKIP_COMMENT = 2
+    LXB_HTML_SERIALIZE_OPT_RAW = 4
+    LXB_HTML_SERIALIZE_OPT_WITHOUT_CLOSING = 8
+    LXB_HTML_SERIALIZE_OPT_TAG_WITH_NS = 16
+    LXB_HTML_SERIALIZE_OPT_WITHOUT_TEXT_INDENT = 32
+    LXB_HTML_SERIALIZE_OPT_FULL_DOCTYPE = 64
+end
+
+# typedef lxb_status_t ( * lxb_html_serialize_cb_f ) ( const lxb_char_t * data , size_t len , void * ctx )
+const lxb_html_serialize_cb_f = Ptr{Cvoid}
+
+const lxb_html_serialize_ext_opt_t = Cuint
+
+@cenum lxb_html_serialize_ext_opt::UInt32 begin
+    LXB_HTML_SERIALIZE_EXT_OPT_UNDEF = 0
+    LXB_HTML_SERIALIZE_EXT_OPT_SKIP_WS_NODES = 1
+    LXB_HTML_SERIALIZE_EXT_OPT_SKIP_COMMENT = 2
+    LXB_HTML_SERIALIZE_EXT_OPT_REPLACE_NEWLINE = 4
+    LXB_HTML_SERIALIZE_EXT_OPT_RAW = 8
+    LXB_HTML_SERIALIZE_EXT_OPT_WITHOUT_CLOSING = 16
+    LXB_HTML_SERIALIZE_EXT_OPT_TAG_WITH_NS = 32
+    LXB_HTML_SERIALIZE_EXT_OPT_FULL_DOCTYPE = 64
+    LXB_HTML_SERIALIZE_EXT_OPT_PRETTY = 128
+end
+
+# typedef lxb_status_t ( * lxb_html_serialize_ext_boundary_cb_f ) ( const lxb_dom_node_t * node , const lxb_char_t * data , size_t len , void * ctx , size_t level , bool is_close )
+const lxb_html_serialize_ext_boundary_cb_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_html_serialize_ext_name_cb_f ) ( const lxb_dom_node_t * node , const lxb_char_t * data , size_t len , void * ctx , bool is_close )
+const lxb_html_serialize_ext_name_cb_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_html_serialize_ext_attr_cb_f ) ( const lxb_dom_node_t * node , const lxb_dom_attr_t * attr , const lxb_char_t * data , size_t len , void * ctx )
+const lxb_html_serialize_ext_attr_cb_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_html_serialize_ext_text_cb_f ) ( const lxb_dom_node_t * node , const lxb_char_t * data , size_t len , void * ctx )
+const lxb_html_serialize_ext_text_cb_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_html_serialize_ext_indent_cb_f ) ( const lxb_char_t * data , size_t len , void * ctx , size_t level )
+const lxb_html_serialize_ext_indent_cb_f = Ptr{Cvoid}
+
+struct lxb_html_serialize_ext_node_t
+    indent::lxb_html_serialize_ext_indent_cb_f
+    _begin::lxb_html_serialize_ext_boundary_cb_f
+    ns::lxb_html_serialize_ext_name_cb_f
+    name::lxb_html_serialize_ext_name_cb_f
+    _end::lxb_html_serialize_ext_boundary_cb_f
+end
+
+struct lxb_html_serialize_ext_attr_t
+    ns::lxb_html_serialize_ext_attr_cb_f
+    name::lxb_html_serialize_ext_attr_cb_f
+    value_before::lxb_html_serialize_ext_attr_cb_f
+    value::lxb_html_serialize_ext_attr_cb_f
+    value_after::lxb_html_serialize_ext_attr_cb_f
+    ws::lxb_html_serialize_ext_text_cb_f
+end
+
+struct lxb_html_serialize_ext_text_t
+    indent::lxb_html_serialize_ext_indent_cb_f
+    _begin::lxb_html_serialize_ext_boundary_cb_f
+    text::lxb_html_serialize_ext_text_cb_f
+    _end::lxb_html_serialize_ext_boundary_cb_f
+end
+
+struct lxb_html_serialize_ext_comment_t
+    indent::lxb_html_serialize_ext_indent_cb_f
+    _begin::lxb_html_serialize_ext_boundary_cb_f
+    text::lxb_html_serialize_ext_text_cb_f
+    _end::lxb_html_serialize_ext_boundary_cb_f
+end
+
+struct lxb_html_serialize_ext_processing_instruction_t
+    indent::lxb_html_serialize_ext_indent_cb_f
+    _begin::lxb_html_serialize_ext_boundary_cb_f
+    target::lxb_html_serialize_ext_text_cb_f
+    middle::lxb_html_serialize_ext_text_cb_f
+    text::lxb_html_serialize_ext_text_cb_f
+    _end::lxb_html_serialize_ext_boundary_cb_f
+end
+
+struct lxb_html_serialize_ext_document_type_t
+    indent::lxb_html_serialize_ext_indent_cb_f
+    _begin::lxb_html_serialize_ext_boundary_cb_f
+    name::lxb_html_serialize_ext_text_cb_f
+    text_public::lxb_html_serialize_ext_text_cb_f
+    text_system::lxb_html_serialize_ext_text_cb_f
+    _end::lxb_html_serialize_ext_boundary_cb_f
+    ws::lxb_html_serialize_ext_text_cb_f
+end
+
+struct lxb_html_serialize_ext_t
+    node::Ptr{lxb_html_serialize_ext_node_t}
+    attr::Ptr{lxb_html_serialize_ext_attr_t}
+    text::Ptr{lxb_html_serialize_ext_text_t}
+    comment::Ptr{lxb_html_serialize_ext_comment_t}
+    processing_instruction::Ptr{lxb_html_serialize_ext_processing_instruction_t}
+    document_type::Ptr{lxb_html_serialize_ext_document_type_t}
+    document::Ptr{lxb_html_serialize_ext_node_t}
+    newline::lxb_html_serialize_ext_indent_cb_f
+end
+
+# typedef lxb_status_t ( * lxb_html_select_options_cb_f ) ( lxb_html_select_element_t * el , lxb_html_option_element_t * option , void * ctx )
+const lxb_html_select_options_cb_f = Ptr{Cvoid}
+
+struct lxb_css_syntax_token_base
+    _begin::Ptr{lxb_char_t}
+    length::Csize_t
+    user_id::Csize_t
+end
+
+const lxb_css_syntax_token_base_t = lxb_css_syntax_token_base
+
+struct lxb_css_syntax_token_string
+    base::lxb_css_syntax_token_base_t
+    data::Ptr{lxb_char_t}
+    length::Csize_t
+end
+
+const lxb_css_syntax_token_string_t = lxb_css_syntax_token_string
+
+const lxb_css_syntax_token_ident_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_function_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_at_keyword_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_hash_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_bad_string_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_url_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_bad_url_t = lxb_css_syntax_token_string_t
+
+struct lxb_css_syntax_token_delim
+    base::lxb_css_syntax_token_base_t
+    character::lxb_codepoint_t
+end
+
+const lxb_css_syntax_token_delim_t = lxb_css_syntax_token_delim
+
+struct lxb_css_syntax_token_unicode_range
+    base::lxb_css_syntax_token_base_t
+    start::lxb_codepoint_t
+    _end::lxb_codepoint_t
+end
+
+const lxb_css_syntax_token_unicode_range_t = lxb_css_syntax_token_unicode_range
+
+struct lxb_css_syntax_token_number
+    base::lxb_css_syntax_token_base_t
+    num::Cdouble
+    is_float::Bool
+    have_sign::Bool
+end
+
+const lxb_css_syntax_token_number_t = lxb_css_syntax_token_number
+
+const lxb_css_syntax_token_percentage_t = lxb_css_syntax_token_number_t
+
+struct lxb_css_syntax_token_dimension
+    num::lxb_css_syntax_token_number_t
+    str::lxb_css_syntax_token_string_t
+end
+
+const lxb_css_syntax_token_dimension_t = lxb_css_syntax_token_dimension
+
+const lxb_css_syntax_token_whitespace_t = lxb_css_syntax_token_string_t
+
+const lxb_css_syntax_token_cdo_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_cdc_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_colon_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_semicolon_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_comma_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_ls_bracket_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_rs_bracket_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_l_parenthesis_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_r_parenthesis_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_lc_bracket_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_rc_bracket_t = lxb_css_syntax_token_base_t
+
+const lxb_css_syntax_token_comment_t = lxb_css_syntax_token_string_t
+
+@cenum lxb_css_rule_type_t::UInt32 begin
+    LXB_CSS_RULE_UNDEF = 0
+    LXB_CSS_RULE_STYLESHEET = 1
+    LXB_CSS_RULE_LIST = 2
+    LXB_CSS_RULE_AT_RULE = 3
+    LXB_CSS_RULE_STYLE = 4
+    LXB_CSS_RULE_BAD_STYLE = 5
+    LXB_CSS_RULE_DECLARATION_LIST = 6
+    LXB_CSS_RULE_DECLARATION = 7
+end
+
+struct lxb_css_memory
+    objs::Ptr{lexbor_dobject_t}
+    mraw::Ptr{lexbor_mraw_t}
+    tree::Ptr{lexbor_mraw_t}
+    ref_count::Csize_t
+end
+
+const lxb_css_memory_t = lxb_css_memory
+
+struct lxb_css_rule
+    type::lxb_css_rule_type_t
+    next::Ptr{Cvoid} # next::Ptr{lxb_css_rule_t}
+    prev::Ptr{Cvoid} # prev::Ptr{lxb_css_rule_t}
+    parent::Ptr{Cvoid} # parent::Ptr{lxb_css_rule_t}
+    memory::Ptr{lxb_css_memory_t}
+    ref_count::Csize_t
+end
+
+function Base.getproperty(x::lxb_css_rule, f::Symbol)
+    f === :next && return Ptr{lxb_css_rule_t}(getfield(x, f))
+    f === :prev && return Ptr{lxb_css_rule_t}(getfield(x, f))
+    f === :parent && return Ptr{lxb_css_rule_t}(getfield(x, f))
+    return getfield(x, f)
+end
+
+const lxb_css_rule_t = lxb_css_rule
+
+struct lxb_css_rule_list
+    rule::lxb_css_rule_t
+    first::Ptr{lxb_css_rule_t}
+    last::Ptr{lxb_css_rule_t}
+end
+
+const lxb_css_rule_list_t = lxb_css_rule_list
+
+struct __JL_Ctag_103
+    data::NTuple{8,UInt8}
+end
+
+function Base.getproperty(x::Ptr{__JL_Ctag_103}, f::Symbol)
+    f === :undef && return Ptr{Ptr{lxb_css_at_rule__undef_t}}(x + 0)
+    f === :custom && return Ptr{Ptr{lxb_css_at_rule__custom_t}}(x + 0)
+    f === :font_face && return Ptr{Ptr{lxb_css_at_rule_font_face_t}}(x + 0)
+    f === :media && return Ptr{Ptr{lxb_css_at_rule_media_t}}(x + 0)
+    f === :ns && return Ptr{Ptr{lxb_css_at_rule_namespace_t}}(x + 0)
+    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::__JL_Ctag_103, f::Symbol)
+    r = Ref{__JL_Ctag_103}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_103}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{__JL_Ctag_103}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_103, private::Bool = false)
+    (:undef, :custom, :font_face, :media, :ns, :user, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct lxb_css_rule_at
+    data::NTuple{88,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_rule_at}, f::Symbol)
+    f === :rule && return Ptr{lxb_css_rule_t}(x + 0)
+    f === :type && return Ptr{Csize_t}(x + 48)
+    f === :u && return Ptr{__JL_Ctag_103}(x + 56)
+    f === :name_begin && return Ptr{Csize_t}(x + 64)
+    f === :prelude_begin && return Ptr{Csize_t}(x + 72)
+    f === :prelude_end && return Ptr{Csize_t}(x + 80)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_rule_at, f::Symbol)
+    r = Ref{lxb_css_rule_at}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_rule_at}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_rule_at}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_rule_at, private::Bool = false)
+    (
+        :rule,
+        :type,
+        :u,
+        :name_begin,
+        :prelude_begin,
+        :prelude_end,
+        if private
+            fieldnames(typeof(x))
+        else
+            ()
+        end...,
+    )
+end
+
+const lxb_css_rule_at_t = lxb_css_rule_at
+
+@cenum lxb_css_selector_type_t::UInt32 begin
+    LXB_CSS_SELECTOR_TYPE__UNDEF = 0
+    LXB_CSS_SELECTOR_TYPE_ANY = 1
+    LXB_CSS_SELECTOR_TYPE_ELEMENT = 2
+    LXB_CSS_SELECTOR_TYPE_ID = 3
+    LXB_CSS_SELECTOR_TYPE_CLASS = 4
+    LXB_CSS_SELECTOR_TYPE_ATTRIBUTE = 5
+    LXB_CSS_SELECTOR_TYPE_PSEUDO_CLASS = 6
+    LXB_CSS_SELECTOR_TYPE_PSEUDO_CLASS_FUNCTION = 7
+    LXB_CSS_SELECTOR_TYPE_PSEUDO_ELEMENT = 8
+    LXB_CSS_SELECTOR_TYPE_PSEUDO_ELEMENT_FUNCTION = 9
+    LXB_CSS_SELECTOR_TYPE__LAST_ENTRY = 10
+end
+
+@cenum lxb_css_selector_combinator_t::UInt32 begin
+    LXB_CSS_SELECTOR_COMBINATOR_DESCENDANT = 0
+    LXB_CSS_SELECTOR_COMBINATOR_CLOSE = 1
+    LXB_CSS_SELECTOR_COMBINATOR_CHILD = 2
+    LXB_CSS_SELECTOR_COMBINATOR_SIBLING = 3
+    LXB_CSS_SELECTOR_COMBINATOR_FOLLOWING = 4
+    LXB_CSS_SELECTOR_COMBINATOR_CELL = 5
+    LXB_CSS_SELECTOR_COMBINATOR__LAST_ENTRY = 6
+end
+
+struct lxb_css_selector_u
+    data::NTuple{24,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_selector_u}, f::Symbol)
+    f === :attribute && return Ptr{lxb_css_selector_attribute_t}(x + 0)
+    f === :pseudo && return Ptr{lxb_css_selector_pseudo_t}(x + 0)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_selector_u, f::Symbol)
+    r = Ref{lxb_css_selector_u}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_selector_u}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_selector_u}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_selector_u, private::Bool = false)
+    (:attribute, :pseudo, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct lxb_css_selector
+    data::NTuple{88,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_selector}, f::Symbol)
+    f === :type && return Ptr{lxb_css_selector_type_t}(x + 0)
+    f === :combinator && return Ptr{lxb_css_selector_combinator_t}(x + 4)
+    f === :name && return Ptr{lexbor_str_t}(x + 8)
+    f === :ns && return Ptr{lexbor_str_t}(x + 24)
+    f === :u && return Ptr{lxb_css_selector_u}(x + 40)
+    f === :next && return Ptr{Ptr{lxb_css_selector_t}}(x + 64)
+    f === :prev && return Ptr{Ptr{lxb_css_selector_t}}(x + 72)
+    f === :list && return Ptr{Ptr{lxb_css_selector_list_t}}(x + 80)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_selector, f::Symbol)
+    r = Ref{lxb_css_selector}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_selector}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_selector}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_selector, private::Bool = false)
+    (:type, :combinator, :name, :ns, :u, :next, :prev, :list, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+const lxb_css_selector_t = lxb_css_selector
+
+const lxb_css_selector_specificity_t = UInt32
+
+struct lxb_css_selector_list
+    first::Ptr{lxb_css_selector_t}
+    last::Ptr{lxb_css_selector_t}
+    parent::Ptr{lxb_css_selector_t}
+    next::Ptr{Cvoid} # next::Ptr{lxb_css_selector_list_t}
+    prev::Ptr{Cvoid} # prev::Ptr{lxb_css_selector_list_t}
+    memory::Ptr{lxb_css_memory_t}
+    specificity::lxb_css_selector_specificity_t
+end
+
+function Base.getproperty(x::lxb_css_selector_list, f::Symbol)
+    f === :next && return Ptr{lxb_css_selector_list_t}(getfield(x, f))
+    f === :prev && return Ptr{lxb_css_selector_list_t}(getfield(x, f))
+    return getfield(x, f)
+end
+
+const lxb_css_selector_list_t = lxb_css_selector_list
+
+struct lxb_css_rule_declaration_list
+    rule::lxb_css_rule_t
+    first::Ptr{lxb_css_rule_t}
+    last::Ptr{lxb_css_rule_t}
+    count::Csize_t
+end
+
+const lxb_css_rule_declaration_list_t = lxb_css_rule_declaration_list
+
+struct lxb_css_rule_style
+    rule::lxb_css_rule_t
+    selector::Ptr{lxb_css_selector_list_t}
+    declarations::Ptr{lxb_css_rule_declaration_list_t}
+    child::Ptr{lxb_css_rule_list_t}
+    prelude_begin::Csize_t
+    prelude_end::Csize_t
+end
+
+const lxb_css_rule_style_t = lxb_css_rule_style
+
+struct lxb_css_rule_bad_style
+    rule::lxb_css_rule_t
+    selectors::lexbor_str_t
+    declarations::Ptr{lxb_css_rule_declaration_list_t}
+    child::Ptr{lxb_css_rule_list_t}
+    prelude_begin::Csize_t
+    prelude_end::Csize_t
+end
+
+const lxb_css_rule_bad_style_t = lxb_css_rule_bad_style
+
+struct __JL_Ctag_111
+    data::NTuple{8,UInt8}
+end
+
+function Base.getproperty(x::Ptr{__JL_Ctag_111}, f::Symbol)
+    f === :undef && return Ptr{Ptr{lxb_css_property__undef_t}}(x + 0)
+    f === :custom && return Ptr{Ptr{lxb_css_property__custom_t}}(x + 0)
+    f === :display && return Ptr{Ptr{lxb_css_property_display_t}}(x + 0)
+    f === :order && return Ptr{Ptr{lxb_css_property_order_t}}(x + 0)
+    f === :visibility && return Ptr{Ptr{lxb_css_property_visibility_t}}(x + 0)
+    f === :width && return Ptr{Ptr{lxb_css_property_width_t}}(x + 0)
+    f === :height && return Ptr{Ptr{lxb_css_property_height_t}}(x + 0)
+    f === :box_sizing && return Ptr{Ptr{lxb_css_property_box_sizing_t}}(x + 0)
+    f === :margin && return Ptr{Ptr{lxb_css_property_margin_t}}(x + 0)
+    f === :margin_top && return Ptr{Ptr{lxb_css_property_margin_top_t}}(x + 0)
+    f === :margin_right && return Ptr{Ptr{lxb_css_property_margin_right_t}}(x + 0)
+    f === :margin_bottom && return Ptr{Ptr{lxb_css_property_margin_bottom_t}}(x + 0)
+    f === :margin_left && return Ptr{Ptr{lxb_css_property_margin_left_t}}(x + 0)
+    f === :padding && return Ptr{Ptr{lxb_css_property_padding_t}}(x + 0)
+    f === :padding_top && return Ptr{Ptr{lxb_css_property_padding_top_t}}(x + 0)
+    f === :padding_right && return Ptr{Ptr{lxb_css_property_padding_right_t}}(x + 0)
+    f === :padding_bottom && return Ptr{Ptr{lxb_css_property_padding_bottom_t}}(x + 0)
+    f === :padding_left && return Ptr{Ptr{lxb_css_property_padding_left_t}}(x + 0)
+    f === :border && return Ptr{Ptr{lxb_css_property_border_t}}(x + 0)
+    f === :border_top && return Ptr{Ptr{lxb_css_property_border_top_t}}(x + 0)
+    f === :border_right && return Ptr{Ptr{lxb_css_property_border_right_t}}(x + 0)
+    f === :border_bottom && return Ptr{Ptr{lxb_css_property_border_bottom_t}}(x + 0)
+    f === :border_left && return Ptr{Ptr{lxb_css_property_border_left_t}}(x + 0)
+    f === :border_top_color && return Ptr{Ptr{lxb_css_property_border_top_color_t}}(x + 0)
+    f === :border_right_color &&
+        return Ptr{Ptr{lxb_css_property_border_right_color_t}}(x + 0)
+    f === :border_bottom_color &&
+        return Ptr{Ptr{lxb_css_property_border_bottom_color_t}}(x + 0)
+    f === :border_left_color && return Ptr{Ptr{lxb_css_property_border_left_color_t}}(x + 0)
+    f === :background_color && return Ptr{Ptr{lxb_css_property_background_color_t}}(x + 0)
+    f === :color && return Ptr{Ptr{lxb_css_property_color_t}}(x + 0)
+    f === :opacity && return Ptr{Ptr{lxb_css_property_opacity_t}}(x + 0)
+    f === :position && return Ptr{Ptr{lxb_css_property_position_t}}(x + 0)
+    f === :top && return Ptr{Ptr{lxb_css_property_top_t}}(x + 0)
+    f === :right && return Ptr{Ptr{lxb_css_property_right_t}}(x + 0)
+    f === :bottom && return Ptr{Ptr{lxb_css_property_bottom_t}}(x + 0)
+    f === :left && return Ptr{Ptr{lxb_css_property_left_t}}(x + 0)
+    f === :inset_block_start && return Ptr{Ptr{lxb_css_property_inset_block_start_t}}(x + 0)
+    f === :inset_inline_start &&
+        return Ptr{Ptr{lxb_css_property_inset_inline_start_t}}(x + 0)
+    f === :inset_block_end && return Ptr{Ptr{lxb_css_property_inset_block_end_t}}(x + 0)
+    f === :inset_inline_end && return Ptr{Ptr{lxb_css_property_inset_inline_end_t}}(x + 0)
+    f === :text_transform && return Ptr{Ptr{lxb_css_property_text_transform_t}}(x + 0)
+    f === :text_align && return Ptr{Ptr{lxb_css_property_text_align_t}}(x + 0)
+    f === :text_align_all && return Ptr{Ptr{lxb_css_property_text_align_all_t}}(x + 0)
+    f === :text_align_last && return Ptr{Ptr{lxb_css_property_text_align_last_t}}(x + 0)
+    f === :text_justify && return Ptr{Ptr{lxb_css_property_text_justify_t}}(x + 0)
+    f === :text_indent && return Ptr{Ptr{lxb_css_property_text_indent_t}}(x + 0)
+    f === :white_space && return Ptr{Ptr{lxb_css_property_white_space_t}}(x + 0)
+    f === :tab_size && return Ptr{Ptr{lxb_css_property_tab_size_t}}(x + 0)
+    f === :word_break && return Ptr{Ptr{lxb_css_property_word_break_t}}(x + 0)
+    f === :line_break && return Ptr{Ptr{lxb_css_property_line_break_t}}(x + 0)
+    f === :hyphens && return Ptr{Ptr{lxb_css_property_hyphens_t}}(x + 0)
+    f === :overflow_wrap && return Ptr{Ptr{lxb_css_property_overflow_wrap_t}}(x + 0)
+    f === :word_wrap && return Ptr{Ptr{lxb_css_property_word_wrap_t}}(x + 0)
+    f === :word_spacing && return Ptr{Ptr{lxb_css_property_word_spacing_t}}(x + 0)
+    f === :letter_spacing && return Ptr{Ptr{lxb_css_property_letter_spacing_t}}(x + 0)
+    f === :hanging_punctuation &&
+        return Ptr{Ptr{lxb_css_property_hanging_punctuation_t}}(x + 0)
+    f === :font_family && return Ptr{Ptr{lxb_css_property_font_family_t}}(x + 0)
+    f === :font_weight && return Ptr{Ptr{lxb_css_property_font_weight_t}}(x + 0)
+    f === :font_stretch && return Ptr{Ptr{lxb_css_property_font_stretch_t}}(x + 0)
+    f === :font_style && return Ptr{Ptr{lxb_css_property_font_style_t}}(x + 0)
+    f === :font_size && return Ptr{Ptr{lxb_css_property_font_size_t}}(x + 0)
+    f === :float_reference && return Ptr{Ptr{lxb_css_property_float_reference_t}}(x + 0)
+    f === :floatp && return Ptr{Ptr{lxb_css_property_float_t}}(x + 0)
+    f === :clear && return Ptr{Ptr{lxb_css_property_clear_t}}(x + 0)
+    f === :float_defer && return Ptr{Ptr{lxb_css_property_float_defer_t}}(x + 0)
+    f === :float_offset && return Ptr{Ptr{lxb_css_property_float_offset_t}}(x + 0)
+    f === :wrap_flow && return Ptr{Ptr{lxb_css_property_wrap_flow_t}}(x + 0)
+    f === :wrap_through && return Ptr{Ptr{lxb_css_property_wrap_through_t}}(x + 0)
+    f === :flex_direction && return Ptr{Ptr{lxb_css_property_flex_direction_t}}(x + 0)
+    f === :flex_wrap && return Ptr{Ptr{lxb_css_property_flex_wrap_t}}(x + 0)
+    f === :flex_flow && return Ptr{Ptr{lxb_css_property_flex_flow_t}}(x + 0)
+    f === :flex && return Ptr{Ptr{lxb_css_property_flex_t}}(x + 0)
+    f === :flex_grow && return Ptr{Ptr{lxb_css_property_flex_grow_t}}(x + 0)
+    f === :flex_shrink && return Ptr{Ptr{lxb_css_property_flex_shrink_t}}(x + 0)
+    f === :flex_basis && return Ptr{Ptr{lxb_css_property_flex_basis_t}}(x + 0)
+    f === :justify_content && return Ptr{Ptr{lxb_css_property_justify_content_t}}(x + 0)
+    f === :align_items && return Ptr{Ptr{lxb_css_property_align_items_t}}(x + 0)
+    f === :align_self && return Ptr{Ptr{lxb_css_property_align_self_t}}(x + 0)
+    f === :align_content && return Ptr{Ptr{lxb_css_property_align_content_t}}(x + 0)
+    f === :dominant_baseline && return Ptr{Ptr{lxb_css_property_dominant_baseline_t}}(x + 0)
+    f === :vertical_align && return Ptr{Ptr{lxb_css_property_vertical_align_t}}(x + 0)
+    f === :baseline_source && return Ptr{Ptr{lxb_css_property_baseline_source_t}}(x + 0)
+    f === :alignment_baseline &&
+        return Ptr{Ptr{lxb_css_property_alignment_baseline_t}}(x + 0)
+    f === :baseline_shift && return Ptr{Ptr{lxb_css_property_baseline_shift_t}}(x + 0)
+    f === :line_height && return Ptr{Ptr{lxb_css_property_line_height_t}}(x + 0)
+    f === :z_index && return Ptr{Ptr{lxb_css_property_z_index_t}}(x + 0)
+    f === :direction && return Ptr{Ptr{lxb_css_property_direction_t}}(x + 0)
+    f === :unicode_bidi && return Ptr{Ptr{lxb_css_property_unicode_bidi_t}}(x + 0)
+    f === :writing_mode && return Ptr{Ptr{lxb_css_property_writing_mode_t}}(x + 0)
+    f === :text_orientation && return Ptr{Ptr{lxb_css_property_text_orientation_t}}(x + 0)
+    f === :text_combine_upright &&
+        return Ptr{Ptr{lxb_css_property_text_combine_upright_t}}(x + 0)
+    f === :overflow_x && return Ptr{Ptr{lxb_css_property_overflow_x_t}}(x + 0)
+    f === :overflow_y && return Ptr{Ptr{lxb_css_property_overflow_y_t}}(x + 0)
+    f === :overflow_block && return Ptr{Ptr{lxb_css_property_overflow_block_t}}(x + 0)
+    f === :overflow_inline && return Ptr{Ptr{lxb_css_property_overflow_inline_t}}(x + 0)
+    f === :text_overflow && return Ptr{Ptr{lxb_css_property_text_overflow_t}}(x + 0)
+    f === :text_decoration_line &&
+        return Ptr{Ptr{lxb_css_property_text_decoration_line_t}}(x + 0)
+    f === :text_decoration_style &&
+        return Ptr{Ptr{lxb_css_property_text_decoration_style_t}}(x + 0)
+    f === :text_decoration_color &&
+        return Ptr{Ptr{lxb_css_property_text_decoration_color_t}}(x + 0)
+    f === :text_decoration && return Ptr{Ptr{lxb_css_property_text_decoration_t}}(x + 0)
+    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::__JL_Ctag_111, f::Symbol)
+    r = Ref{__JL_Ctag_111}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_111}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{__JL_Ctag_111}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_111, private::Bool = false)
+    (
+        :undef,
+        :custom,
+        :display,
+        :order,
+        :visibility,
+        :width,
+        :height,
+        :box_sizing,
+        :margin,
+        :margin_top,
+        :margin_right,
+        :margin_bottom,
+        :margin_left,
+        :padding,
+        :padding_top,
+        :padding_right,
+        :padding_bottom,
+        :padding_left,
+        :border,
+        :border_top,
+        :border_right,
+        :border_bottom,
+        :border_left,
+        :border_top_color,
+        :border_right_color,
+        :border_bottom_color,
+        :border_left_color,
+        :background_color,
+        :color,
+        :opacity,
+        :position,
+        :top,
+        :right,
+        :bottom,
+        :left,
+        :inset_block_start,
+        :inset_inline_start,
+        :inset_block_end,
+        :inset_inline_end,
+        :text_transform,
+        :text_align,
+        :text_align_all,
+        :text_align_last,
+        :text_justify,
+        :text_indent,
+        :white_space,
+        :tab_size,
+        :word_break,
+        :line_break,
+        :hyphens,
+        :overflow_wrap,
+        :word_wrap,
+        :word_spacing,
+        :letter_spacing,
+        :hanging_punctuation,
+        :font_family,
+        :font_weight,
+        :font_stretch,
+        :font_style,
+        :font_size,
+        :float_reference,
+        :floatp,
+        :clear,
+        :float_defer,
+        :float_offset,
+        :wrap_flow,
+        :wrap_through,
+        :flex_direction,
+        :flex_wrap,
+        :flex_flow,
+        :flex,
+        :flex_grow,
+        :flex_shrink,
+        :flex_basis,
+        :justify_content,
+        :align_items,
+        :align_self,
+        :align_content,
+        :dominant_baseline,
+        :vertical_align,
+        :baseline_source,
+        :alignment_baseline,
+        :baseline_shift,
+        :line_height,
+        :z_index,
+        :direction,
+        :unicode_bidi,
+        :writing_mode,
+        :text_orientation,
+        :text_combine_upright,
+        :overflow_x,
+        :overflow_y,
+        :overflow_block,
+        :overflow_inline,
+        :text_overflow,
+        :text_decoration_line,
+        :text_decoration_style,
+        :text_decoration_color,
+        :text_decoration,
+        :user,
+        if private
+            fieldnames(typeof(x))
+        else
+            ()
+        end...,
+    )
+end
+
+struct lxb_css_rule_declaration_offset_t
+    name_begin::Csize_t
+    name_end::Csize_t
+    value_begin::Csize_t
+    value_end::Csize_t
+    important_begin::Csize_t
+    important_end::Csize_t
+end
+
+struct lxb_css_rule_declaration
+    data::NTuple{120,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_rule_declaration}, f::Symbol)
+    f === :rule && return Ptr{lxb_css_rule_t}(x + 0)
+    f === :type && return Ptr{Csize_t}(x + 48)
+    f === :u && return Ptr{__JL_Ctag_111}(x + 56)
+    f === :offset && return Ptr{lxb_css_rule_declaration_offset_t}(x + 64)
+    f === :important && return Ptr{Bool}(x + 112)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_rule_declaration, f::Symbol)
+    r = Ref{lxb_css_rule_declaration}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_rule_declaration}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_rule_declaration}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_rule_declaration, private::Bool = false)
+    (:rule, :type, :u, :offset, :important, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+const lxb_css_rule_declaration_t = lxb_css_rule_declaration
+
+struct lxb_css_syntax_token_u
+    data::NTuple{80,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_syntax_token_u}, f::Symbol)
+    f === :base && return Ptr{lxb_css_syntax_token_base_t}(x + 0)
+    f === :comment && return Ptr{lxb_css_syntax_token_comment_t}(x + 0)
+    f === :number && return Ptr{lxb_css_syntax_token_number_t}(x + 0)
+    f === :dimension && return Ptr{lxb_css_syntax_token_dimension_t}(x + 0)
+    f === :percentage && return Ptr{lxb_css_syntax_token_percentage_t}(x + 0)
+    f === :hash && return Ptr{lxb_css_syntax_token_hash_t}(x + 0)
+    f === :string && return Ptr{lxb_css_syntax_token_string_t}(x + 0)
+    f === :bad_string && return Ptr{lxb_css_syntax_token_bad_string_t}(x + 0)
+    f === :delim && return Ptr{lxb_css_syntax_token_delim_t}(x + 0)
+    f === :unicode_range && return Ptr{lxb_css_syntax_token_unicode_range_t}(x + 0)
+    f === :lparenthesis && return Ptr{lxb_css_syntax_token_l_parenthesis_t}(x + 0)
+    f === :rparenthesis && return Ptr{lxb_css_syntax_token_r_parenthesis_t}(x + 0)
+    f === :cdc && return Ptr{lxb_css_syntax_token_cdc_t}(x + 0)
+    f === :_function && return Ptr{lxb_css_syntax_token_function_t}(x + 0)
+    f === :ident && return Ptr{lxb_css_syntax_token_ident_t}(x + 0)
+    f === :url && return Ptr{lxb_css_syntax_token_url_t}(x + 0)
+    f === :bad_url && return Ptr{lxb_css_syntax_token_bad_url_t}(x + 0)
+    f === :at_keyword && return Ptr{lxb_css_syntax_token_at_keyword_t}(x + 0)
+    f === :whitespace && return Ptr{lxb_css_syntax_token_whitespace_t}(x + 0)
+    f === :terminated && return Ptr{lxb_css_syntax_token_terminated_t}(x + 0)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_syntax_token_u, f::Symbol)
+    r = Ref{lxb_css_syntax_token_u}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_syntax_token_u}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_syntax_token_u}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_syntax_token_u, private::Bool = false)
+    (
+        :base,
+        :comment,
+        :number,
+        :dimension,
+        :percentage,
+        :hash,
+        :string,
+        :bad_string,
+        :delim,
+        :unicode_range,
+        :lparenthesis,
+        :rparenthesis,
+        :cdc,
+        :_function,
+        :ident,
+        :url,
+        :bad_url,
+        :at_keyword,
+        :whitespace,
+        :terminated,
+        if private
+            fieldnames(typeof(x))
+        else
+            ()
+        end...,
+    )
+end
+
+@cenum lxb_css_syntax_token_type_t::UInt32 begin
+    LXB_CSS_SYNTAX_TOKEN_UNDEF = 0
+    LXB_CSS_SYNTAX_TOKEN_IDENT = 1
+    LXB_CSS_SYNTAX_TOKEN_FUNCTION = 2
+    LXB_CSS_SYNTAX_TOKEN_AT_KEYWORD = 3
+    LXB_CSS_SYNTAX_TOKEN_HASH = 4
+    LXB_CSS_SYNTAX_TOKEN_STRING = 5
+    LXB_CSS_SYNTAX_TOKEN_BAD_STRING = 6
+    LXB_CSS_SYNTAX_TOKEN_URL = 7
+    LXB_CSS_SYNTAX_TOKEN_BAD_URL = 8
+    LXB_CSS_SYNTAX_TOKEN_COMMENT = 9
+    LXB_CSS_SYNTAX_TOKEN_WHITESPACE = 10
+    LXB_CSS_SYNTAX_TOKEN_DIMENSION = 11
+    LXB_CSS_SYNTAX_TOKEN_DELIM = 12
+    LXB_CSS_SYNTAX_TOKEN_UNICODE_RANGE = 13
+    LXB_CSS_SYNTAX_TOKEN_NUMBER = 14
+    LXB_CSS_SYNTAX_TOKEN_PERCENTAGE = 15
+    LXB_CSS_SYNTAX_TOKEN_CDO = 16
+    LXB_CSS_SYNTAX_TOKEN_CDC = 17
+    LXB_CSS_SYNTAX_TOKEN_COLON = 18
+    LXB_CSS_SYNTAX_TOKEN_SEMICOLON = 19
+    LXB_CSS_SYNTAX_TOKEN_COMMA = 20
+    LXB_CSS_SYNTAX_TOKEN_LS_BRACKET = 21
+    LXB_CSS_SYNTAX_TOKEN_RS_BRACKET = 22
+    LXB_CSS_SYNTAX_TOKEN_L_PARENTHESIS = 23
+    LXB_CSS_SYNTAX_TOKEN_R_PARENTHESIS = 24
+    LXB_CSS_SYNTAX_TOKEN_LC_BRACKET = 25
+    LXB_CSS_SYNTAX_TOKEN_RC_BRACKET = 26
+    LXB_CSS_SYNTAX_TOKEN__EOF = 27
+    LXB_CSS_SYNTAX_TOKEN__TERMINATED = 28
+    LXB_CSS_SYNTAX_TOKEN__END = 28
+    LXB_CSS_SYNTAX_TOKEN__LAST_ENTRY = 29
+end
+
+struct lxb_css_syntax_token
+    data::NTuple{112,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_syntax_token}, f::Symbol)
+    f === :types && return Ptr{lxb_css_syntax_token_u}(x + 0)
+    f === :type && return Ptr{lxb_css_syntax_token_type_t}(x + 80)
+    f === :offset && return Ptr{Csize_t}(x + 88)
+    f === :cloned && return Ptr{Bool}(x + 96)
+    f === :next && return Ptr{Ptr{lxb_css_syntax_token_t}}(x + 104)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_syntax_token, f::Symbol)
+    r = Ref{lxb_css_syntax_token}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_syntax_token}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_syntax_token}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_syntax_token, private::Bool = false)
+    (:types, :type, :offset, :cloned, :next, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+const lxb_css_syntax_token_t = lxb_css_syntax_token
+
+struct lxb_css_syntax_tokenizer
+    tokens::Ptr{lexbor_dobject_t}
+    parse_errors::Ptr{lexbor_array_obj_t}
+    mraw::Ptr{lexbor_mraw_t}
+    first::Ptr{lxb_css_syntax_token_t}
+    last::Ptr{lxb_css_syntax_token_t}
+    in_begin::Ptr{lxb_char_t}
+    in_end::Ptr{lxb_char_t}
+    in_p::Ptr{lxb_char_t}
+    start::Ptr{lxb_char_t}
+    pos::Ptr{lxb_char_t}
+    _end::Ptr{lxb_char_t}
+    offset::Csize_t
+    opt::Cuint
+    status::lxb_status_t
+    with_comment::Bool
+    with_unicode_range::Bool
+end
+
+const lxb_css_syntax_tokenizer_t = lxb_css_syntax_tokenizer
+
+struct lxb_css_selectors
+    list::Ptr{lxb_css_selector_list_t}
+    list_last::Ptr{lxb_css_selector_list_t}
+    parent::Ptr{lxb_css_selector_t}
+    combinator::lxb_css_selector_combinator_t
+    comb_default::lxb_css_selector_combinator_t
+    error::Csize_t
+    status::Bool
+    err_in_function::Bool
+    failed::Bool
+end
+
+const lxb_css_selectors_t = lxb_css_selectors
+
+# typedef const lxb_css_syntax_token_t * ( * lxb_css_syntax_state_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , lxb_css_syntax_rule_t * rule )
+const lxb_css_syntax_state_f = Ptr{Cvoid}
+
+# typedef bool ( * lxb_css_parser_state_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx )
+const lxb_css_parser_state_f = Ptr{Cvoid}
+
+struct __JL_Ctag_105
+    data::NTuple{8,UInt8}
+end
+
+function Base.getproperty(x::Ptr{__JL_Ctag_105}, f::Symbol)
+    f === :cb && return Ptr{Ptr{lxb_css_syntax_cb_base_t}}(x + 0)
+    f === :list_rules && return Ptr{Ptr{lxb_css_syntax_cb_list_rules_t}}(x + 0)
+    f === :at_rule && return Ptr{Ptr{lxb_css_syntax_cb_at_rule_t}}(x + 0)
+    f === :qualified_rule && return Ptr{Ptr{lxb_css_syntax_cb_qualified_rule_t}}(x + 0)
+    f === :components && return Ptr{Ptr{lxb_css_syntax_cb_components_t}}(x + 0)
+    f === :declarations && return Ptr{Ptr{lxb_css_syntax_cb_declarations_t}}(x + 0)
+    f === :func && return Ptr{Ptr{lxb_css_syntax_cb_function_t}}(x + 0)
+    f === :block && return Ptr{Ptr{lxb_css_syntax_cb_block_t}}(x + 0)
+    f === :pipe && return Ptr{Ptr{lxb_css_syntax_cb_pipe_t}}(x + 0)
+    f === :user && return Ptr{Ptr{Cvoid}}(x + 0)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::__JL_Ctag_105, f::Symbol)
+    r = Ref{__JL_Ctag_105}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_105}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{__JL_Ctag_105}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_105, private::Bool = false)
+    (
+        :cb,
+        :list_rules,
+        :at_rule,
+        :qualified_rule,
+        :components,
+        :declarations,
+        :func,
+        :block,
+        :pipe,
+        :user,
+        if private
+            fieldnames(typeof(x))
+        else
+            ()
+        end...,
+    )
+end
+
+struct lxb_css_syntax_rule
+    data::NTuple{96,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_syntax_rule}, f::Symbol)
+    f === :phase && return Ptr{lxb_css_syntax_state_f}(x + 0)
+    f === :state && return Ptr{lxb_css_parser_state_f}(x + 8)
+    f === :back && return Ptr{lxb_css_syntax_state_f}(x + 16)
+    f === :back_state && return Ptr{lxb_css_parser_state_f}(x + 24)
+    f === :context && return Ptr{Ptr{Cvoid}}(x + 32)
+    f === :context_old && return Ptr{Ptr{Cvoid}}(x + 40)
+    f === :returned && return Ptr{Ptr{Cvoid}}(x + 48)
+    f === :cbx && return Ptr{__JL_Ctag_105}(x + 56)
+    f === :offset && return Ptr{Csize_t}(x + 64)
+    f === :deep && return Ptr{Csize_t}(x + 72)
+    f === :_begin && return Ptr{Csize_t}(x + 80)
+    f === :block_end && return Ptr{lxb_css_syntax_token_type_t}(x + 88)
+    f === :nested && return Ptr{Bool}(x + 92)
+    f === :skip_consume && return Ptr{Bool}(x + 93)
+    f === :important && return Ptr{Bool}(x + 94)
+    f === :failed && return Ptr{Bool}(x + 95)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_syntax_rule, f::Symbol)
+    r = Ref{lxb_css_syntax_rule}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_syntax_rule}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_syntax_rule}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_syntax_rule, private::Bool = false)
+    (
+        :phase,
+        :state,
+        :back,
+        :back_state,
+        :context,
+        :context_old,
+        :returned,
+        :cbx,
+        :offset,
+        :deep,
+        :_begin,
+        :block_end,
+        :nested,
+        :skip_consume,
+        :important,
+        :failed,
+        if private
+            fieldnames(typeof(x))
+        else
+            ()
+        end...,
+    )
+end
+
+const lxb_css_syntax_rule_t = lxb_css_syntax_rule
+
+struct lxb_css_parser_state
+    state::lxb_css_parser_state_f
+    context::Ptr{Cvoid}
+    root::Bool
+end
+
+const lxb_css_parser_state_t = lxb_css_parser_state
+
+struct lxb_css_log_t
+    messages::lexbor_array_obj_t
+    mraw::Ptr{lexbor_mraw_t}
+    self_mraw::Bool
+end
+
+@cenum lxb_css_parser_stage_t::UInt32 begin
+    LXB_CSS_PARSER_CLEAN = 0
+    LXB_CSS_PARSER_RUN = 1
+    LXB_CSS_PARSER_STOP = 2
+    LXB_CSS_PARSER_END = 3
+end
+
+struct lxb_css_syntax_declaration_offset
+    value_begin::Csize_t
+    value_end::Csize_t
+    important_begin::Csize_t
+    important_end::Csize_t
+    _end::Csize_t
+end
+
+const lxb_css_syntax_declaration_offset_t = lxb_css_syntax_declaration_offset
+
+struct lxb_css_parser
+    data::NTuple{296,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_parser}, f::Symbol)
+    f === :tkz && return Ptr{Ptr{lxb_css_syntax_tokenizer_t}}(x + 0)
+    f === :selectors && return Ptr{Ptr{lxb_css_selectors_t}}(x + 8)
+    f === :memory && return Ptr{Ptr{lxb_css_memory_t}}(x + 16)
+    f === :rules_begin && return Ptr{Ptr{lxb_css_syntax_rule_t}}(x + 24)
+    f === :rules_end && return Ptr{Ptr{lxb_css_syntax_rule_t}}(x + 32)
+    f === :rules && return Ptr{Ptr{lxb_css_syntax_rule_t}}(x + 40)
+    f === :states_begin && return Ptr{Ptr{lxb_css_parser_state_t}}(x + 48)
+    f === :states_end && return Ptr{Ptr{lxb_css_parser_state_t}}(x + 56)
+    f === :states && return Ptr{Ptr{lxb_css_parser_state_t}}(x + 64)
+    f === :types_begin && return Ptr{Ptr{lxb_css_syntax_token_type_t}}(x + 72)
+    f === :types_end && return Ptr{Ptr{lxb_css_syntax_token_type_t}}(x + 80)
+    f === :types_pos && return Ptr{Ptr{lxb_css_syntax_token_type_t}}(x + 88)
+    f === :token_end && return Ptr{lxb_css_syntax_token_t}(x + 96)
+    f === :str && return Ptr{lexbor_str_t}(x + 208)
+    f === :str_size && return Ptr{Csize_t}(x + 224)
+    f === :log && return Ptr{Ptr{lxb_css_log_t}}(x + 232)
+    f === :stage && return Ptr{lxb_css_parser_stage_t}(x + 240)
+    f === :offset && return Ptr{lxb_css_syntax_declaration_offset_t}(x + 248)
+    f === :loop && return Ptr{Bool}(x + 288)
+    f === :fake_null && return Ptr{Bool}(x + 289)
+    f === :my_tkz && return Ptr{Bool}(x + 290)
+    f === :status && return Ptr{lxb_status_t}(x + 292)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_parser, f::Symbol)
+    r = Ref{lxb_css_parser}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_parser}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_parser}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_parser, private::Bool = false)
+    (
+        :tkz,
+        :selectors,
+        :memory,
+        :rules_begin,
+        :rules_end,
+        :rules,
+        :states_begin,
+        :states_end,
+        :states,
+        :types_begin,
+        :types_end,
+        :types_pos,
+        :token_end,
+        :str,
+        :str_size,
+        :log,
+        :stage,
+        :offset,
+        :loop,
+        :fake_null,
+        :my_tkz,
+        :status,
+        if private
+            fieldnames(typeof(x))
+        else
+            ()
+        end...,
+    )
+end
+
+const lxb_css_parser_t = lxb_css_parser
 
 const lxb_css_type_t = UInt32
 
@@ -2490,11 +3105,30 @@ const lxb_css_style_serialize_f = Ptr{Cvoid}
 # typedef void * ( * lxb_css_style_destroy_f ) ( lxb_css_memory_t * memory , void * style , bool self_destroy )
 const lxb_css_style_destroy_f = Ptr{Cvoid}
 
+struct lxb_css_stylesheet
+    root::Ptr{lxb_css_rule_t}
+    memory::Ptr{lxb_css_memory_t}
+    element::Ptr{Cvoid}
+end
+
+const lxb_css_stylesheet_t = lxb_css_stylesheet
+
 struct lxb_css_entry_data_t
     name::Ptr{lxb_char_t}
     length::Csize_t
     unique::Csize_t
     state::lxb_css_parser_state_f
+    create::lxb_css_style_create_f
+    destroy::lxb_css_style_destroy_f
+    serialize::lxb_css_style_serialize_f
+    initial::Ptr{Cvoid}
+end
+
+struct lxb_css_entry_at_rule_data_t
+    name::Ptr{lxb_char_t}
+    length::Csize_t
+    unique::Csize_t
+    cbs::Ptr{Cvoid}
     create::lxb_css_style_create_f
     destroy::lxb_css_style_destroy_f
     serialize::lxb_css_style_serialize_f
@@ -2519,6 +3153,19 @@ struct lxb_css_log_message_t
     type::lxb_css_log_type_t
 end
 
+# typedef const lxb_char_t * ( * lxb_css_syntax_token_data_cb_f ) ( const lxb_char_t * begin , const lxb_char_t * end , lexbor_str_t * str , lexbor_mraw_t * mraw , lxb_css_syntax_token_data_t * td )
+const lxb_css_syntax_token_data_cb_f = Ptr{Cvoid}
+
+struct lxb_css_syntax_token_data
+    cb::lxb_css_syntax_token_data_cb_f
+    status::lxb_status_t
+    count::Cint
+    num::UInt32
+    is_last::Bool
+end
+
+const lxb_css_syntax_token_data_t = lxb_css_syntax_token_data
+
 # typedef lxb_status_t ( * lxb_css_syntax_token_cb_f ) ( const lxb_char_t * data , size_t len , void * ctx )
 const lxb_css_syntax_token_cb_f = Ptr{Cvoid}
 
@@ -2531,75 +3178,101 @@ const lxb_css_syntax_tokenizer_state_f = Ptr{Cvoid}
     LXB_CSS_SYNTAX_TOKENIZER_OPT_UNDEF = 0
 end
 
-# typedef lxb_status_t ( * lxb_css_syntax_declaration_end_f ) ( lxb_css_parser_t * parser , void * ctx , bool important , bool failed )
-const lxb_css_syntax_declaration_end_f = Ptr{Cvoid}
-
 # typedef lxb_status_t ( * lxb_css_syntax_cb_done_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx , bool failed )
 const lxb_css_syntax_cb_done_f = Ptr{Cvoid}
 
-struct lxb_css_syntax_list_rules_offset_t
-    _begin::Csize_t
-    _end::Csize_t
-end
-
-struct lxb_css_syntax_at_rule_offset_t
-    name::Csize_t
-    prelude::Csize_t
-    prelude_end::Csize_t
-    block::Csize_t
-    block_end::Csize_t
-end
-
-struct lxb_css_syntax_qualified_offset_t
-    prelude::Csize_t
-    prelude_end::Csize_t
-    block::Csize_t
-    block_end::Csize_t
-end
-
-struct lxb_css_syntax_declarations_offset_t
-    _begin::Csize_t
-    _end::Csize_t
-    name_begin::Csize_t
-    name_end::Csize_t
-    value_begin::Csize_t
-    before_important::Csize_t
-    value_end::Csize_t
-end
-
-struct lxb_css_syntax_cb_base_t
-    state::lxb_css_parser_state_f
-    block::lxb_css_parser_state_f
+struct lxb_css_syntax_cb_base
     failed::lxb_css_parser_state_f
     _end::lxb_css_syntax_cb_done_f
 end
 
-const lxb_css_syntax_cb_pipe_t = lxb_css_syntax_cb_base_t
+const lxb_css_syntax_cb_base_t = lxb_css_syntax_cb_base
 
-const lxb_css_syntax_cb_block_t = lxb_css_syntax_cb_base_t
+# typedef const lxb_css_syntax_cb_at_rule_t * ( * lxb_css_syntax_begin_at_rule_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx , void * * out_rule )
+const lxb_css_syntax_begin_at_rule_f = Ptr{Cvoid}
 
-const lxb_css_syntax_cb_function_t = lxb_css_syntax_cb_base_t
+# typedef const lxb_css_syntax_cb_qualified_rule_t * ( * lxb_css_syntax_begin_qualified_rule_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx , void * * out_rule )
+const lxb_css_syntax_begin_qualified_rule_f = Ptr{Cvoid}
 
-const lxb_css_syntax_cb_components_t = lxb_css_syntax_cb_base_t
-
-const lxb_css_syntax_cb_at_rule_t = lxb_css_syntax_cb_base_t
-
-const lxb_css_syntax_cb_qualified_rule_t = lxb_css_syntax_cb_base_t
-
-struct lxb_css_syntax_cb_declarations_t
-    cb::lxb_css_syntax_cb_base_t
-    declaration_end::lxb_css_syntax_declaration_end_f
-    at_rule::Ptr{lxb_css_syntax_cb_at_rule_t}
-end
-
-struct lxb_css_syntax_cb_list_rules_t
+struct lxb_css_syntax_cb_list_rules
     cb::lxb_css_syntax_cb_base_t
     next::lxb_css_parser_state_f
-    at_rule::Ptr{lxb_css_syntax_cb_at_rule_t}
-    qualified_rule::Ptr{lxb_css_syntax_cb_qualified_rule_t}
+    at_rule::lxb_css_syntax_begin_at_rule_f
+    qualified_rule::lxb_css_syntax_begin_qualified_rule_f
 end
 
-@cenum __JL_Ctag_50::UInt32 begin
+const lxb_css_syntax_cb_list_rules_t = lxb_css_syntax_cb_list_rules
+
+# typedef const lxb_css_syntax_cb_block_t * ( * lxb_css_syntax_begin_block_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx , void * * out_rule )
+const lxb_css_syntax_begin_block_f = Ptr{Cvoid}
+
+struct lxb_css_syntax_cb_at_rule
+    cb::lxb_css_syntax_cb_base_t
+    prelude::lxb_css_parser_state_f
+    prelude_end::lxb_css_syntax_cb_done_f
+    block::lxb_css_syntax_begin_block_f
+end
+
+const lxb_css_syntax_cb_at_rule_t = lxb_css_syntax_cb_at_rule
+
+struct lxb_css_syntax_cb_qualified_rule
+    cb::lxb_css_syntax_cb_base_t
+    prelude::lxb_css_parser_state_f
+    prelude_end::lxb_css_syntax_cb_done_f
+    block::lxb_css_syntax_begin_block_f
+end
+
+const lxb_css_syntax_cb_qualified_rule_t = lxb_css_syntax_cb_qualified_rule
+
+# typedef const lxb_css_syntax_cb_declarations_t * ( * lxb_css_syntax_begin_declarations_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx , void * * out_rule )
+const lxb_css_syntax_begin_declarations_f = Ptr{Cvoid}
+
+struct lxb_css_syntax_cb_block
+    cb::lxb_css_syntax_cb_base_t
+    next::lxb_css_parser_state_f
+    at_rule::lxb_css_syntax_begin_at_rule_f
+    declarations::lxb_css_syntax_begin_declarations_f
+    qualified_rule::lxb_css_syntax_begin_qualified_rule_f
+end
+
+const lxb_css_syntax_cb_block_t = lxb_css_syntax_cb_block
+
+# typedef lxb_css_parser_state_f ( * lxb_css_syntax_declaration_name_f ) ( lxb_css_parser_t * parser , const lxb_css_syntax_token_t * token , void * ctx , void * * out_rule )
+const lxb_css_syntax_declaration_name_f = Ptr{Cvoid}
+
+# typedef lxb_status_t ( * lxb_css_syntax_declaration_end_f ) ( lxb_css_parser_t * parser , void * declaration , void * ctx , const lxb_css_syntax_token_t * token , lxb_css_syntax_declaration_offset_t * offset , bool important , bool failed )
+const lxb_css_syntax_declaration_end_f = Ptr{Cvoid}
+
+struct lxb_css_syntax_cb_declarations
+    cb::lxb_css_syntax_cb_base_t
+    name::lxb_css_syntax_declaration_name_f
+    _end::lxb_css_syntax_declaration_end_f
+end
+
+const lxb_css_syntax_cb_declarations_t = lxb_css_syntax_cb_declarations
+
+struct lxb_css_syntax_cb_function
+    cb::lxb_css_syntax_cb_base_t
+    value::lxb_css_parser_state_f
+end
+
+const lxb_css_syntax_cb_function_t = lxb_css_syntax_cb_function
+
+struct lxb_css_syntax_cb_components
+    cb::lxb_css_syntax_cb_base_t
+    prelude::lxb_css_parser_state_f
+end
+
+const lxb_css_syntax_cb_components_t = lxb_css_syntax_cb_components
+
+struct lxb_css_syntax_cb_pipe
+    cb::lxb_css_syntax_cb_base_t
+    prelude::lxb_css_parser_state_f
+end
+
+const lxb_css_syntax_cb_pipe_t = lxb_css_syntax_cb_pipe
+
+@cenum __JL_Ctag_2::UInt32 begin
     LXB_CSS_VALUE__UNDEF = 0
     LXB_CSS_VALUE_INITIAL = 1
     LXB_CSS_VALUE_INHERIT = 2
@@ -2978,12 +3651,13 @@ end
 
 const lxb_css_value_type_t = Cuint
 
-@cenum __JL_Ctag_51::UInt32 begin
+@cenum __JL_Ctag_3::UInt32 begin
     LXB_CSS_AT_RULE__UNDEF = 0
     LXB_CSS_AT_RULE__CUSTOM = 1
-    LXB_CSS_AT_RULE_MEDIA = 2
-    LXB_CSS_AT_RULE_NAMESPACE = 3
-    LXB_CSS_AT_RULE__LAST_ENTRY = 4
+    LXB_CSS_AT_RULE_FONT_FACE = 2
+    LXB_CSS_AT_RULE_MEDIA = 3
+    LXB_CSS_AT_RULE_NAMESPACE = 4
+    LXB_CSS_AT_RULE__LAST_ENTRY = 5
 end
 
 const lxb_css_at_rule_type_t = Csize_t
@@ -2991,21 +3665,25 @@ const lxb_css_at_rule_type_t = Csize_t
 struct lxb_css_at_rule__undef_t
     type::lxb_css_at_rule_type_t
     prelude::lexbor_str_t
-    block::lexbor_str_t
+    block::Ptr{lxb_css_rule_list_t}
 end
 
 struct lxb_css_at_rule__custom_t
     name::lexbor_str_t
     prelude::lexbor_str_t
-    block::lexbor_str_t
+    block::Ptr{lxb_css_rule_list_t}
 end
 
 struct lxb_css_at_rule_media_t
-    reserved::Csize_t
+    block::Ptr{lxb_css_rule_list_t}
 end
 
 struct lxb_css_at_rule_namespace_t
     reserved::Csize_t
+end
+
+struct lxb_css_at_rule_font_face_t
+    block::Ptr{lxb_css_rule_list_t}
 end
 
 @cenum lxb_css_unit_t::UInt32 begin
@@ -3044,13 +3722,13 @@ end
     LXB_CSS_UNIT_RELATIVE__LAST_ENTRY = 22
 end
 
-@cenum lxb_css_unit_angel_t::UInt32 begin
-    LXB_CSS_UNIT_ANGEL__BEGIN = 22
+@cenum lxb_css_unit_angle_t::UInt32 begin
+    LXB_CSS_UNIT_ANGLE__BEGIN = 22
     LXB_CSS_UNIT_DEG = 22
     LXB_CSS_UNIT_GRAD = 23
     LXB_CSS_UNIT_RAD = 24
     LXB_CSS_UNIT_TURN = 25
-    LXB_CSS_UNIT_ANGEL__LAST_ENTRY = 26
+    LXB_CSS_UNIT_ANGLE__LAST_ENTRY = 26
 end
 
 @cenum lxb_css_unit_frequency_t::UInt32 begin
@@ -3093,25 +3771,33 @@ struct lxb_css_value_length_t
     unit::lxb_css_unit_t
 end
 
-struct __JL_Ctag_268
+struct __JL_Ctag_101
     data::NTuple{16,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_268}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_101}, f::Symbol)
     f === :length && return Ptr{lxb_css_value_length_t}(x + 0)
     f === :percentage && return Ptr{lxb_css_value_percentage_t}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_268, f::Symbol)
-    r = Ref{__JL_Ctag_268}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_268}, r)
+function Base.getproperty(x::__JL_Ctag_101, f::Symbol)
+    r = Ref{__JL_Ctag_101}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_101}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_268}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_101}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_101, private::Bool = false)
+    (:length, :percentage, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_length_percentage_t
@@ -3120,7 +3806,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_value_length_percentage_t}, f::Symbol)
     f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_268}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_101}(x + 8)
     return getfield(x, f)
 end
 
@@ -3135,26 +3821,42 @@ function Base.setproperty!(x::Ptr{lxb_css_value_length_percentage_t}, f::Symbol,
     unsafe_store!(getproperty(x, f), v)
 end
 
-struct __JL_Ctag_267
+function Base.propertynames(x::lxb_css_value_length_percentage_t, private::Bool = false)
+    (:type, :u, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct __JL_Ctag_104
     data::NTuple{16,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_267}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_104}, f::Symbol)
     f === :number && return Ptr{lxb_css_value_number_t}(x + 0)
     f === :length && return Ptr{lxb_css_value_length_t}(x + 0)
     f === :percentage && return Ptr{lxb_css_value_percentage_t}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_267, f::Symbol)
-    r = Ref{__JL_Ctag_267}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_267}, r)
+function Base.getproperty(x::__JL_Ctag_104, f::Symbol)
+    r = Ref{__JL_Ctag_104}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_104}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_267}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_104}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_104, private::Bool = false)
+    (:number, :length, :percentage, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_number_length_percentage_t
@@ -3163,7 +3865,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_value_number_length_percentage_t}, f::Symbol)
     f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_267}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_104}(x + 8)
     return getfield(x, f)
 end
 
@@ -3178,25 +3880,44 @@ function Base.setproperty!(x::Ptr{lxb_css_value_number_length_percentage_t}, f::
     unsafe_store!(getproperty(x, f), v)
 end
 
-struct __JL_Ctag_277
+function Base.propertynames(
+    x::lxb_css_value_number_length_percentage_t,
+    private::Bool = false,
+)
+    (:type, :u, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct __JL_Ctag_102
     data::NTuple{16,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_277}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_102}, f::Symbol)
     f === :number && return Ptr{lxb_css_value_number_t}(x + 0)
     f === :length && return Ptr{lxb_css_value_length_t}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_277, f::Symbol)
-    r = Ref{__JL_Ctag_277}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_277}, r)
+function Base.getproperty(x::__JL_Ctag_102, f::Symbol)
+    r = Ref{__JL_Ctag_102}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_102}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_277}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_102}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_102, private::Bool = false)
+    (:number, :length, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_number_length_t
@@ -3205,7 +3926,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_value_number_length_t}, f::Symbol)
     f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_277}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_102}(x + 8)
     return getfield(x, f)
 end
 
@@ -3220,25 +3941,41 @@ function Base.setproperty!(x::Ptr{lxb_css_value_number_length_t}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
 end
 
-struct __JL_Ctag_274
+function Base.propertynames(x::lxb_css_value_number_length_t, private::Bool = false)
+    (:type, :u, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct __JL_Ctag_108
     data::NTuple{16,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_274}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_108}, f::Symbol)
     f === :number && return Ptr{lxb_css_value_number_t}(x + 0)
     f === :percentage && return Ptr{lxb_css_value_percentage_t}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_274, f::Symbol)
-    r = Ref{__JL_Ctag_274}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_274}, r)
+function Base.getproperty(x::__JL_Ctag_108, f::Symbol)
+    r = Ref{__JL_Ctag_108}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_108}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_274}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_108}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_108, private::Bool = false)
+    (:number, :percentage, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_number_percentage_t
@@ -3247,7 +3984,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_value_number_percentage_t}, f::Symbol)
     f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_274}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_108}(x + 8)
     return getfield(x, f)
 end
 
@@ -3260,6 +3997,14 @@ end
 
 function Base.setproperty!(x::Ptr{lxb_css_value_number_percentage_t}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_value_number_percentage_t, private::Bool = false)
+    (:type, :u, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_number_type_t
@@ -3283,14 +4028,41 @@ struct lxb_css_value_length_type_t
 end
 
 struct lxb_css_value_length_percentage_type_t
-    type::lxb_css_value_type_t
-    length::lxb_css_value_length_percentage_t
+    data::NTuple{32,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_value_length_percentage_type_t}, f::Symbol)
+    f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
+    f === :length && return Ptr{lxb_css_value_length_percentage_t}(x + 8)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_value_length_percentage_type_t, f::Symbol)
+    r = Ref{lxb_css_value_length_percentage_type_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_value_length_percentage_type_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_value_length_percentage_type_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(
+    x::lxb_css_value_length_percentage_type_t,
+    private::Bool = false,
+)
+    (:type, :length, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_angle_t
     num::Cdouble
     is_float::Bool
-    unit::lxb_css_unit_angel_t
+    unit::lxb_css_unit_angle_t
 end
 
 struct lxb_css_value_angle_type_t
@@ -3298,25 +4070,33 @@ struct lxb_css_value_angle_type_t
     angle::lxb_css_value_angle_t
 end
 
-struct __JL_Ctag_273
+struct __JL_Ctag_110
     data::NTuple{16,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_273}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_110}, f::Symbol)
     f === :number && return Ptr{lxb_css_value_number_t}(x + 0)
     f === :angle && return Ptr{lxb_css_value_angle_t}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_273, f::Symbol)
-    r = Ref{__JL_Ctag_273}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_273}, r)
+function Base.getproperty(x::__JL_Ctag_110, f::Symbol)
+    r = Ref{__JL_Ctag_110}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_110}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_273}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_110}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_110, private::Bool = false)
+    (:number, :angle, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_hue_t
@@ -3325,7 +4105,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_value_hue_t}, f::Symbol)
     f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_273}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_110}(x + 8)
     return getfield(x, f)
 end
 
@@ -3338,6 +4118,14 @@ end
 
 function Base.setproperty!(x::Ptr{lxb_css_value_hue_t}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_value_hue_t, private::Bool = false)
+    (:type, :u, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_color_hex_rgba_t
@@ -3360,40 +4148,136 @@ struct lxb_css_value_color_hex_t
 end
 
 struct lxb_css_value_color_rgba_t
-    r::lxb_css_value_number_percentage_t
-    g::lxb_css_value_number_percentage_t
-    b::lxb_css_value_number_percentage_t
-    a::lxb_css_value_number_percentage_t
-    old::Bool
-end
-
-struct lxb_css_value_color_hsla_t
-    h::lxb_css_value_hue_t
-    s::lxb_css_value_percentage_type_t
-    l::lxb_css_value_percentage_type_t
-    a::lxb_css_value_number_percentage_t
-    old::Bool
-end
-
-struct lxb_css_value_color_lab_t
-    l::lxb_css_value_number_percentage_t
-    a::lxb_css_value_number_percentage_t
-    b::lxb_css_value_number_percentage_t
-    alpha::lxb_css_value_number_percentage_t
-end
-
-struct lxb_css_value_color_lch_t
-    l::lxb_css_value_number_percentage_t
-    c::lxb_css_value_number_percentage_t
-    h::lxb_css_value_hue_t
-    a::lxb_css_value_number_percentage_t
-end
-
-struct __JL_Ctag_275
     data::NTuple{104,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_275}, f::Symbol)
+function Base.getproperty(x::Ptr{lxb_css_value_color_rgba_t}, f::Symbol)
+    f === :r && return Ptr{lxb_css_value_number_percentage_t}(x + 0)
+    f === :g && return Ptr{lxb_css_value_number_percentage_t}(x + 24)
+    f === :b && return Ptr{lxb_css_value_number_percentage_t}(x + 48)
+    f === :a && return Ptr{lxb_css_value_number_percentage_t}(x + 72)
+    f === :old && return Ptr{Bool}(x + 96)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_value_color_rgba_t, f::Symbol)
+    r = Ref{lxb_css_value_color_rgba_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_value_color_rgba_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_value_color_rgba_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_value_color_rgba_t, private::Bool = false)
+    (:r, :g, :b, :a, :old, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct lxb_css_value_color_hsla_t
+    data::NTuple{104,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_value_color_hsla_t}, f::Symbol)
+    f === :h && return Ptr{lxb_css_value_hue_t}(x + 0)
+    f === :s && return Ptr{lxb_css_value_percentage_type_t}(x + 24)
+    f === :l && return Ptr{lxb_css_value_percentage_type_t}(x + 48)
+    f === :a && return Ptr{lxb_css_value_number_percentage_t}(x + 72)
+    f === :old && return Ptr{Bool}(x + 96)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_value_color_hsla_t, f::Symbol)
+    r = Ref{lxb_css_value_color_hsla_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_value_color_hsla_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_value_color_hsla_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_value_color_hsla_t, private::Bool = false)
+    (:h, :s, :l, :a, :old, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct lxb_css_value_color_lab_t
+    data::NTuple{96,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_value_color_lab_t}, f::Symbol)
+    f === :l && return Ptr{lxb_css_value_number_percentage_t}(x + 0)
+    f === :a && return Ptr{lxb_css_value_number_percentage_t}(x + 24)
+    f === :b && return Ptr{lxb_css_value_number_percentage_t}(x + 48)
+    f === :alpha && return Ptr{lxb_css_value_number_percentage_t}(x + 72)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_value_color_lab_t, f::Symbol)
+    r = Ref{lxb_css_value_color_lab_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_value_color_lab_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_value_color_lab_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_value_color_lab_t, private::Bool = false)
+    (:l, :a, :b, :alpha, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct lxb_css_value_color_lch_t
+    data::NTuple{96,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_value_color_lch_t}, f::Symbol)
+    f === :l && return Ptr{lxb_css_value_number_percentage_t}(x + 0)
+    f === :c && return Ptr{lxb_css_value_number_percentage_t}(x + 24)
+    f === :h && return Ptr{lxb_css_value_hue_t}(x + 48)
+    f === :a && return Ptr{lxb_css_value_number_percentage_t}(x + 72)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_value_color_lch_t, f::Symbol)
+    r = Ref{lxb_css_value_color_lch_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_value_color_lch_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_value_color_lch_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_value_color_lch_t, private::Bool = false)
+    (:l, :c, :h, :a, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+struct __JL_Ctag_107
+    data::NTuple{104,UInt8}
+end
+
+function Base.getproperty(x::Ptr{__JL_Ctag_107}, f::Symbol)
     f === :hex && return Ptr{lxb_css_value_color_hex_t}(x + 0)
     f === :rgb && return Ptr{lxb_css_value_color_rgba_t}(x + 0)
     f === :hsl && return Ptr{lxb_css_value_color_hsla_t}(x + 0)
@@ -3403,15 +4287,23 @@ function Base.getproperty(x::Ptr{__JL_Ctag_275}, f::Symbol)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_275, f::Symbol)
-    r = Ref{__JL_Ctag_275}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_275}, r)
+function Base.getproperty(x::__JL_Ctag_107, f::Symbol)
+    r = Ref{__JL_Ctag_107}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_107}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_275}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_107}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_107, private::Bool = false)
+    (:hex, :rgb, :hsl, :hwb, :lab, :lch, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_value_color_t
@@ -3420,7 +4312,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_value_color_t}, f::Symbol)
     f === :type && return Ptr{lxb_css_value_type_t}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_275}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_107}(x + 8)
     return getfield(x, f)
 end
 
@@ -3435,7 +4327,15 @@ function Base.setproperty!(x::Ptr{lxb_css_value_color_t}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
 end
 
-@cenum __JL_Ctag_86::UInt32 begin
+function Base.propertynames(x::lxb_css_value_color_t, private::Bool = false)
+    (:type, :u, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
+end
+
+@cenum __JL_Ctag_4::UInt32 begin
     LXB_CSS_PROPERTY__UNDEF = 0
     LXB_CSS_PROPERTY__CUSTOM = 1
     LXB_CSS_PROPERTY_ALIGN_CONTENT = 2
@@ -3544,7 +4444,7 @@ end
 
 const lxb_css_property_type_t = Csize_t
 
-@cenum __JL_Ctag_87::UInt32 begin
+@cenum __JL_Ctag_5::UInt32 begin
     LXB_CSS_ALIGN_CONTENT_FLEX_START = 5
     LXB_CSS_ALIGN_CONTENT_FLEX_END = 6
     LXB_CSS_ALIGN_CONTENT_CENTER = 7
@@ -3555,7 +4455,7 @@ end
 
 const lxb_css_align_content_type_t = Cuint
 
-@cenum __JL_Ctag_88::UInt32 begin
+@cenum __JL_Ctag_6::UInt32 begin
     LXB_CSS_ALIGN_ITEMS_FLEX_START = 5
     LXB_CSS_ALIGN_ITEMS_FLEX_END = 6
     LXB_CSS_ALIGN_ITEMS_CENTER = 7
@@ -3565,7 +4465,7 @@ end
 
 const lxb_css_align_items_type_t = Cuint
 
-@cenum __JL_Ctag_89::UInt32 begin
+@cenum __JL_Ctag_7::UInt32 begin
     LXB_CSS_ALIGN_SELF_AUTO = 12
     LXB_CSS_ALIGN_SELF_FLEX_START = 5
     LXB_CSS_ALIGN_SELF_FLEX_END = 6
@@ -3576,7 +4476,7 @@ end
 
 const lxb_css_align_self_type_t = Cuint
 
-@cenum __JL_Ctag_90::UInt32 begin
+@cenum __JL_Ctag_8::UInt32 begin
     LXB_CSS_ALIGNMENT_BASELINE_BASELINE = 11
     LXB_CSS_ALIGNMENT_BASELINE_TEXT_BOTTOM = 13
     LXB_CSS_ALIGNMENT_BASELINE_ALPHABETIC = 14
@@ -3589,7 +4489,7 @@ end
 
 const lxb_css_alignment_baseline_type_t = Cuint
 
-@cenum __JL_Ctag_91::UInt32 begin
+@cenum __JL_Ctag_9::UInt32 begin
     LXB_CSS_BASELINE_SHIFT__LENGTH = 20
     LXB_CSS_BASELINE_SHIFT__PERCENTAGE = 21
     LXB_CSS_BASELINE_SHIFT_SUB = 22
@@ -3601,7 +4501,7 @@ end
 
 const lxb_css_baseline_shift_type_t = Cuint
 
-@cenum __JL_Ctag_92::UInt32 begin
+@cenum __JL_Ctag_10::UInt32 begin
     LXB_CSS_BASELINE_SOURCE_AUTO = 12
     LXB_CSS_BASELINE_SOURCE_FIRST = 26
     LXB_CSS_BASELINE_SOURCE_LAST = 27
@@ -3609,7 +4509,7 @@ end
 
 const lxb_css_baseline_source_type_t = Cuint
 
-@cenum __JL_Ctag_93::UInt32 begin
+@cenum __JL_Ctag_11::UInt32 begin
     LXB_CSS_BORDER_THIN = 28
     LXB_CSS_BORDER_MEDIUM = 29
     LXB_CSS_BORDER_THICK = 30
@@ -3628,7 +4528,7 @@ end
 
 const lxb_css_border_type_t = Cuint
 
-@cenum __JL_Ctag_94::UInt32 begin
+@cenum __JL_Ctag_12::UInt32 begin
     LXB_CSS_BORDER_BOTTOM_THIN = 28
     LXB_CSS_BORDER_BOTTOM_MEDIUM = 29
     LXB_CSS_BORDER_BOTTOM_THICK = 30
@@ -3647,7 +4547,7 @@ end
 
 const lxb_css_border_bottom_type_t = Cuint
 
-@cenum __JL_Ctag_95::UInt32 begin
+@cenum __JL_Ctag_13::UInt32 begin
     LXB_CSS_BORDER_LEFT_THIN = 28
     LXB_CSS_BORDER_LEFT_MEDIUM = 29
     LXB_CSS_BORDER_LEFT_THICK = 30
@@ -3666,7 +4566,7 @@ end
 
 const lxb_css_border_left_type_t = Cuint
 
-@cenum __JL_Ctag_96::UInt32 begin
+@cenum __JL_Ctag_14::UInt32 begin
     LXB_CSS_BORDER_RIGHT_THIN = 28
     LXB_CSS_BORDER_RIGHT_MEDIUM = 29
     LXB_CSS_BORDER_RIGHT_THICK = 30
@@ -3685,7 +4585,7 @@ end
 
 const lxb_css_border_right_type_t = Cuint
 
-@cenum __JL_Ctag_97::UInt32 begin
+@cenum __JL_Ctag_15::UInt32 begin
     LXB_CSS_BORDER_TOP_THIN = 28
     LXB_CSS_BORDER_TOP_MEDIUM = 29
     LXB_CSS_BORDER_TOP_THICK = 30
@@ -3704,7 +4604,7 @@ end
 
 const lxb_css_border_top_type_t = Cuint
 
-@cenum __JL_Ctag_98::UInt32 begin
+@cenum __JL_Ctag_16::UInt32 begin
     LXB_CSS_BOTTOM_AUTO = 12
     LXB_CSS_BOTTOM__LENGTH = 20
     LXB_CSS_BOTTOM__PERCENTAGE = 21
@@ -3712,14 +4612,14 @@ end
 
 const lxb_css_bottom_type_t = Cuint
 
-@cenum __JL_Ctag_99::UInt32 begin
+@cenum __JL_Ctag_17::UInt32 begin
     LXB_CSS_BOX_SIZING_CONTENT_BOX = 41
     LXB_CSS_BOX_SIZING_BORDER_BOX = 42
 end
 
 const lxb_css_box_sizing_type_t = Cuint
 
-@cenum __JL_Ctag_100::UInt32 begin
+@cenum __JL_Ctag_18::UInt32 begin
     LXB_CSS_CLEAR_INLINE_START = 43
     LXB_CSS_CLEAR_INLINE_END = 44
     LXB_CSS_CLEAR_BLOCK_START = 45
@@ -3733,7 +4633,7 @@ end
 
 const lxb_css_clear_type_t = Cuint
 
-@cenum __JL_Ctag_101::UInt32 begin
+@cenum __JL_Ctag_19::UInt32 begin
     LXB_CSS_COLOR_CURRENTCOLOR = 49
     LXB_CSS_COLOR_TRANSPARENT = 50
     LXB_CSS_COLOR_HEX = 51
@@ -3918,14 +4818,14 @@ end
 
 const lxb_css_color_type_t = Cuint
 
-@cenum __JL_Ctag_102::UInt32 begin
+@cenum __JL_Ctag_20::UInt32 begin
     LXB_CSS_DIRECTION_LTR = 229
     LXB_CSS_DIRECTION_RTL = 230
 end
 
 const lxb_css_direction_type_t = Cuint
 
-@cenum __JL_Ctag_103::UInt32 begin
+@cenum __JL_Ctag_21::UInt32 begin
     LXB_CSS_DISPLAY_BLOCK = 231
     LXB_CSS_DISPLAY_INLINE = 232
     LXB_CSS_DISPLAY_RUN_IN = 233
@@ -3958,7 +4858,7 @@ end
 
 const lxb_css_display_type_t = Cuint
 
-@cenum __JL_Ctag_104::UInt32 begin
+@cenum __JL_Ctag_22::UInt32 begin
     LXB_CSS_DOMINANT_BASELINE_AUTO = 12
     LXB_CSS_DOMINANT_BASELINE_TEXT_BOTTOM = 13
     LXB_CSS_DOMINANT_BASELINE_ALPHABETIC = 14
@@ -3972,19 +4872,19 @@ end
 
 const lxb_css_dominant_baseline_type_t = Cuint
 
-@cenum __JL_Ctag_105::UInt32 begin
+@cenum __JL_Ctag_23::UInt32 begin
     LXB_CSS_FLEX_NONE = 31
 end
 
 const lxb_css_flex_type_t = Cuint
 
-@cenum __JL_Ctag_106::UInt32 begin
+@cenum __JL_Ctag_24::UInt32 begin
     LXB_CSS_FLEX_BASIS_CONTENT = 259
 end
 
 const lxb_css_flex_basis_type_t = Cuint
 
-@cenum __JL_Ctag_107::UInt32 begin
+@cenum __JL_Ctag_25::UInt32 begin
     LXB_CSS_FLEX_DIRECTION_ROW = 260
     LXB_CSS_FLEX_DIRECTION_ROW_REVERSE = 261
     LXB_CSS_FLEX_DIRECTION_COLUMN = 262
@@ -3993,19 +4893,19 @@ end
 
 const lxb_css_flex_direction_type_t = Cuint
 
-@cenum __JL_Ctag_108::UInt32 begin
+@cenum __JL_Ctag_26::UInt32 begin
     LXB_CSS_FLEX_GROW__NUMBER = 264
 end
 
 const lxb_css_flex_grow_type_t = Cuint
 
-@cenum __JL_Ctag_109::UInt32 begin
+@cenum __JL_Ctag_27::UInt32 begin
     LXB_CSS_FLEX_SHRINK__NUMBER = 264
 end
 
 const lxb_css_flex_shrink_type_t = Cuint
 
-@cenum __JL_Ctag_110::UInt32 begin
+@cenum __JL_Ctag_28::UInt32 begin
     LXB_CSS_FLEX_WRAP_NOWRAP = 265
     LXB_CSS_FLEX_WRAP_WRAP = 266
     LXB_CSS_FLEX_WRAP_WRAP_REVERSE = 267
@@ -4013,7 +4913,7 @@ end
 
 const lxb_css_flex_wrap_type_t = Cuint
 
-@cenum __JL_Ctag_111::UInt32 begin
+@cenum __JL_Ctag_29::UInt32 begin
     LXB_CSS_FLOAT_BLOCK_START = 45
     LXB_CSS_FLOAT_BLOCK_END = 46
     LXB_CSS_FLOAT_INLINE_START = 43
@@ -4032,7 +4932,7 @@ end
 
 const lxb_css_float_type_t = Cuint
 
-@cenum __JL_Ctag_112::UInt32 begin
+@cenum __JL_Ctag_30::UInt32 begin
     LXB_CSS_FLOAT_DEFER__INTEGER = 273
     LXB_CSS_FLOAT_DEFER_LAST = 27
     LXB_CSS_FLOAT_DEFER_NONE = 31
@@ -4040,14 +4940,14 @@ end
 
 const lxb_css_float_defer_type_t = Cuint
 
-@cenum __JL_Ctag_113::UInt32 begin
+@cenum __JL_Ctag_31::UInt32 begin
     LXB_CSS_FLOAT_OFFSET__LENGTH = 20
     LXB_CSS_FLOAT_OFFSET__PERCENTAGE = 21
 end
 
 const lxb_css_float_offset_type_t = Cuint
 
-@cenum __JL_Ctag_114::UInt32 begin
+@cenum __JL_Ctag_32::UInt32 begin
     LXB_CSS_FLOAT_REFERENCE_INLINE = 232
     LXB_CSS_FLOAT_REFERENCE_COLUMN = 262
     LXB_CSS_FLOAT_REFERENCE_REGION = 274
@@ -4056,7 +4956,7 @@ end
 
 const lxb_css_float_reference_type_t = Cuint
 
-@cenum __JL_Ctag_115::UInt32 begin
+@cenum __JL_Ctag_33::UInt32 begin
     LXB_CSS_FONT_FAMILY_SERIF = 276
     LXB_CSS_FONT_FAMILY_SANS_SERIF = 277
     LXB_CSS_FONT_FAMILY_CURSIVE = 278
@@ -4074,7 +4974,7 @@ end
 
 const lxb_css_font_family_type_t = Cuint
 
-@cenum __JL_Ctag_116::UInt32 begin
+@cenum __JL_Ctag_34::UInt32 begin
     LXB_CSS_FONT_SIZE_XX_SMALL = 289
     LXB_CSS_FONT_SIZE_X_SMALL = 290
     LXB_CSS_FONT_SIZE_SMALL = 291
@@ -4091,7 +4991,7 @@ end
 
 const lxb_css_font_size_type_t = Cuint
 
-@cenum __JL_Ctag_117::UInt32 begin
+@cenum __JL_Ctag_35::UInt32 begin
     LXB_CSS_FONT_STRETCH_NORMAL = 298
     LXB_CSS_FONT_STRETCH__PERCENTAGE = 21
     LXB_CSS_FONT_STRETCH_ULTRA_CONDENSED = 299
@@ -4106,7 +5006,7 @@ end
 
 const lxb_css_font_stretch_type_t = Cuint
 
-@cenum __JL_Ctag_118::UInt32 begin
+@cenum __JL_Ctag_36::UInt32 begin
     LXB_CSS_FONT_STYLE_NORMAL = 298
     LXB_CSS_FONT_STYLE_ITALIC = 307
     LXB_CSS_FONT_STYLE_OBLIQUE = 308
@@ -4114,7 +5014,7 @@ end
 
 const lxb_css_font_style_type_t = Cuint
 
-@cenum __JL_Ctag_119::UInt32 begin
+@cenum __JL_Ctag_37::UInt32 begin
     LXB_CSS_FONT_WEIGHT_NORMAL = 298
     LXB_CSS_FONT_WEIGHT_BOLD = 309
     LXB_CSS_FONT_WEIGHT__NUMBER = 264
@@ -4124,7 +5024,7 @@ end
 
 const lxb_css_font_weight_type_t = Cuint
 
-@cenum __JL_Ctag_120::UInt32 begin
+@cenum __JL_Ctag_38::UInt32 begin
     LXB_CSS_HANGING_PUNCTUATION_NONE = 31
     LXB_CSS_HANGING_PUNCTUATION_FIRST = 26
     LXB_CSS_HANGING_PUNCTUATION_FORCE_END = 312
@@ -4134,7 +5034,7 @@ end
 
 const lxb_css_hanging_punctuation_type_t = Cuint
 
-@cenum __JL_Ctag_121::UInt32 begin
+@cenum __JL_Ctag_39::UInt32 begin
     LXB_CSS_HEIGHT_AUTO = 12
     LXB_CSS_HEIGHT_MIN_CONTENT = 314
     LXB_CSS_HEIGHT_MAX_CONTENT = 315
@@ -4146,7 +5046,7 @@ end
 
 const lxb_css_height_type_t = Cuint
 
-@cenum __JL_Ctag_122::UInt32 begin
+@cenum __JL_Ctag_40::UInt32 begin
     LXB_CSS_HYPHENS_NONE = 31
     LXB_CSS_HYPHENS_MANUAL = 317
     LXB_CSS_HYPHENS_AUTO = 12
@@ -4154,7 +5054,7 @@ end
 
 const lxb_css_hyphens_type_t = Cuint
 
-@cenum __JL_Ctag_123::UInt32 begin
+@cenum __JL_Ctag_41::UInt32 begin
     LXB_CSS_INSET_BLOCK_END_AUTO = 12
     LXB_CSS_INSET_BLOCK_END__LENGTH = 20
     LXB_CSS_INSET_BLOCK_END__PERCENTAGE = 21
@@ -4162,7 +5062,7 @@ end
 
 const lxb_css_inset_block_end_type_t = Cuint
 
-@cenum __JL_Ctag_124::UInt32 begin
+@cenum __JL_Ctag_42::UInt32 begin
     LXB_CSS_INSET_BLOCK_START_AUTO = 12
     LXB_CSS_INSET_BLOCK_START__LENGTH = 20
     LXB_CSS_INSET_BLOCK_START__PERCENTAGE = 21
@@ -4170,7 +5070,7 @@ end
 
 const lxb_css_inset_block_start_type_t = Cuint
 
-@cenum __JL_Ctag_125::UInt32 begin
+@cenum __JL_Ctag_43::UInt32 begin
     LXB_CSS_INSET_INLINE_END_AUTO = 12
     LXB_CSS_INSET_INLINE_END__LENGTH = 20
     LXB_CSS_INSET_INLINE_END__PERCENTAGE = 21
@@ -4178,7 +5078,7 @@ end
 
 const lxb_css_inset_inline_end_type_t = Cuint
 
-@cenum __JL_Ctag_126::UInt32 begin
+@cenum __JL_Ctag_44::UInt32 begin
     LXB_CSS_INSET_INLINE_START_AUTO = 12
     LXB_CSS_INSET_INLINE_START__LENGTH = 20
     LXB_CSS_INSET_INLINE_START__PERCENTAGE = 21
@@ -4186,7 +5086,7 @@ end
 
 const lxb_css_inset_inline_start_type_t = Cuint
 
-@cenum __JL_Ctag_127::UInt32 begin
+@cenum __JL_Ctag_45::UInt32 begin
     LXB_CSS_JUSTIFY_CONTENT_FLEX_START = 5
     LXB_CSS_JUSTIFY_CONTENT_FLEX_END = 6
     LXB_CSS_JUSTIFY_CONTENT_CENTER = 7
@@ -4196,7 +5096,7 @@ end
 
 const lxb_css_justify_content_type_t = Cuint
 
-@cenum __JL_Ctag_128::UInt32 begin
+@cenum __JL_Ctag_46::UInt32 begin
     LXB_CSS_LEFT_AUTO = 12
     LXB_CSS_LEFT__LENGTH = 20
     LXB_CSS_LEFT__PERCENTAGE = 21
@@ -4204,14 +5104,14 @@ end
 
 const lxb_css_left_type_t = Cuint
 
-@cenum __JL_Ctag_129::UInt32 begin
+@cenum __JL_Ctag_47::UInt32 begin
     LXB_CSS_LETTER_SPACING_NORMAL = 298
     LXB_CSS_LETTER_SPACING__LENGTH = 20
 end
 
 const lxb_css_letter_spacing_type_t = Cuint
 
-@cenum __JL_Ctag_130::UInt32 begin
+@cenum __JL_Ctag_48::UInt32 begin
     LXB_CSS_LINE_BREAK_AUTO = 12
     LXB_CSS_LINE_BREAK_LOOSE = 318
     LXB_CSS_LINE_BREAK_NORMAL = 298
@@ -4221,7 +5121,7 @@ end
 
 const lxb_css_line_break_type_t = Cuint
 
-@cenum __JL_Ctag_131::UInt32 begin
+@cenum __JL_Ctag_49::UInt32 begin
     LXB_CSS_LINE_HEIGHT_NORMAL = 298
     LXB_CSS_LINE_HEIGHT__NUMBER = 264
     LXB_CSS_LINE_HEIGHT__LENGTH = 20
@@ -4230,7 +5130,7 @@ end
 
 const lxb_css_line_height_type_t = Cuint
 
-@cenum __JL_Ctag_132::UInt32 begin
+@cenum __JL_Ctag_50::UInt32 begin
     LXB_CSS_MARGIN_AUTO = 12
     LXB_CSS_MARGIN__LENGTH = 20
     LXB_CSS_MARGIN__PERCENTAGE = 21
@@ -4238,7 +5138,7 @@ end
 
 const lxb_css_margin_type_t = Cuint
 
-@cenum __JL_Ctag_133::UInt32 begin
+@cenum __JL_Ctag_51::UInt32 begin
     LXB_CSS_MARGIN_BOTTOM_AUTO = 12
     LXB_CSS_MARGIN_BOTTOM__LENGTH = 20
     LXB_CSS_MARGIN_BOTTOM__PERCENTAGE = 21
@@ -4246,7 +5146,7 @@ end
 
 const lxb_css_margin_bottom_type_t = Cuint
 
-@cenum __JL_Ctag_134::UInt32 begin
+@cenum __JL_Ctag_52::UInt32 begin
     LXB_CSS_MARGIN_LEFT_AUTO = 12
     LXB_CSS_MARGIN_LEFT__LENGTH = 20
     LXB_CSS_MARGIN_LEFT__PERCENTAGE = 21
@@ -4254,7 +5154,7 @@ end
 
 const lxb_css_margin_left_type_t = Cuint
 
-@cenum __JL_Ctag_135::UInt32 begin
+@cenum __JL_Ctag_53::UInt32 begin
     LXB_CSS_MARGIN_RIGHT_AUTO = 12
     LXB_CSS_MARGIN_RIGHT__LENGTH = 20
     LXB_CSS_MARGIN_RIGHT__PERCENTAGE = 21
@@ -4262,7 +5162,7 @@ end
 
 const lxb_css_margin_right_type_t = Cuint
 
-@cenum __JL_Ctag_136::UInt32 begin
+@cenum __JL_Ctag_54::UInt32 begin
     LXB_CSS_MARGIN_TOP_AUTO = 12
     LXB_CSS_MARGIN_TOP__LENGTH = 20
     LXB_CSS_MARGIN_TOP__PERCENTAGE = 21
@@ -4270,7 +5170,7 @@ end
 
 const lxb_css_margin_top_type_t = Cuint
 
-@cenum __JL_Ctag_137::UInt32 begin
+@cenum __JL_Ctag_55::UInt32 begin
     LXB_CSS_MAX_HEIGHT_NONE = 31
     LXB_CSS_MAX_HEIGHT_MIN_CONTENT = 314
     LXB_CSS_MAX_HEIGHT_MAX_CONTENT = 315
@@ -4282,7 +5182,7 @@ end
 
 const lxb_css_max_height_type_t = Cuint
 
-@cenum __JL_Ctag_138::UInt32 begin
+@cenum __JL_Ctag_56::UInt32 begin
     LXB_CSS_MAX_WIDTH_NONE = 31
     LXB_CSS_MAX_WIDTH_MIN_CONTENT = 314
     LXB_CSS_MAX_WIDTH_MAX_CONTENT = 315
@@ -4294,7 +5194,7 @@ end
 
 const lxb_css_max_width_type_t = Cuint
 
-@cenum __JL_Ctag_139::UInt32 begin
+@cenum __JL_Ctag_57::UInt32 begin
     LXB_CSS_MIN_HEIGHT_AUTO = 12
     LXB_CSS_MIN_HEIGHT_MIN_CONTENT = 314
     LXB_CSS_MIN_HEIGHT_MAX_CONTENT = 315
@@ -4306,7 +5206,7 @@ end
 
 const lxb_css_min_height_type_t = Cuint
 
-@cenum __JL_Ctag_140::UInt32 begin
+@cenum __JL_Ctag_58::UInt32 begin
     LXB_CSS_MIN_WIDTH_AUTO = 12
     LXB_CSS_MIN_WIDTH_MIN_CONTENT = 314
     LXB_CSS_MIN_WIDTH_MAX_CONTENT = 315
@@ -4318,20 +5218,20 @@ end
 
 const lxb_css_min_width_type_t = Cuint
 
-@cenum __JL_Ctag_141::UInt32 begin
+@cenum __JL_Ctag_59::UInt32 begin
     LXB_CSS_OPACITY__NUMBER = 264
     LXB_CSS_OPACITY__PERCENTAGE = 21
 end
 
 const lxb_css_opacity_type_t = Cuint
 
-@cenum __JL_Ctag_142::UInt32 begin
+@cenum __JL_Ctag_60::UInt32 begin
     LXB_CSS_ORDER__INTEGER = 273
 end
 
 const lxb_css_order_type_t = Cuint
 
-@cenum __JL_Ctag_143::UInt32 begin
+@cenum __JL_Ctag_61::UInt32 begin
     LXB_CSS_OVERFLOW_BLOCK_VISIBLE = 321
     LXB_CSS_OVERFLOW_BLOCK_HIDDEN = 32
     LXB_CSS_OVERFLOW_BLOCK_CLIP = 322
@@ -4341,7 +5241,7 @@ end
 
 const lxb_css_overflow_block_type_t = Cuint
 
-@cenum __JL_Ctag_144::UInt32 begin
+@cenum __JL_Ctag_62::UInt32 begin
     LXB_CSS_OVERFLOW_INLINE_VISIBLE = 321
     LXB_CSS_OVERFLOW_INLINE_HIDDEN = 32
     LXB_CSS_OVERFLOW_INLINE_CLIP = 322
@@ -4351,7 +5251,7 @@ end
 
 const lxb_css_overflow_inline_type_t = Cuint
 
-@cenum __JL_Ctag_145::UInt32 begin
+@cenum __JL_Ctag_63::UInt32 begin
     LXB_CSS_OVERFLOW_WRAP_NORMAL = 298
     LXB_CSS_OVERFLOW_WRAP_BREAK_WORD = 324
     LXB_CSS_OVERFLOW_WRAP_ANYWHERE = 320
@@ -4359,7 +5259,7 @@ end
 
 const lxb_css_overflow_wrap_type_t = Cuint
 
-@cenum __JL_Ctag_146::UInt32 begin
+@cenum __JL_Ctag_64::UInt32 begin
     LXB_CSS_OVERFLOW_X_VISIBLE = 321
     LXB_CSS_OVERFLOW_X_HIDDEN = 32
     LXB_CSS_OVERFLOW_X_CLIP = 322
@@ -4369,7 +5269,7 @@ end
 
 const lxb_css_overflow_x_type_t = Cuint
 
-@cenum __JL_Ctag_147::UInt32 begin
+@cenum __JL_Ctag_65::UInt32 begin
     LXB_CSS_OVERFLOW_Y_VISIBLE = 321
     LXB_CSS_OVERFLOW_Y_HIDDEN = 32
     LXB_CSS_OVERFLOW_Y_CLIP = 322
@@ -4379,7 +5279,7 @@ end
 
 const lxb_css_overflow_y_type_t = Cuint
 
-@cenum __JL_Ctag_148::UInt32 begin
+@cenum __JL_Ctag_66::UInt32 begin
     LXB_CSS_PADDING_AUTO = 12
     LXB_CSS_PADDING__LENGTH = 20
     LXB_CSS_PADDING__PERCENTAGE = 21
@@ -4387,7 +5287,7 @@ end
 
 const lxb_css_padding_type_t = Cuint
 
-@cenum __JL_Ctag_149::UInt32 begin
+@cenum __JL_Ctag_67::UInt32 begin
     LXB_CSS_PADDING_BOTTOM_AUTO = 12
     LXB_CSS_PADDING_BOTTOM__LENGTH = 20
     LXB_CSS_PADDING_BOTTOM__PERCENTAGE = 21
@@ -4395,7 +5295,7 @@ end
 
 const lxb_css_padding_bottom_type_t = Cuint
 
-@cenum __JL_Ctag_150::UInt32 begin
+@cenum __JL_Ctag_68::UInt32 begin
     LXB_CSS_PADDING_LEFT_AUTO = 12
     LXB_CSS_PADDING_LEFT__LENGTH = 20
     LXB_CSS_PADDING_LEFT__PERCENTAGE = 21
@@ -4403,7 +5303,7 @@ end
 
 const lxb_css_padding_left_type_t = Cuint
 
-@cenum __JL_Ctag_151::UInt32 begin
+@cenum __JL_Ctag_69::UInt32 begin
     LXB_CSS_PADDING_RIGHT_AUTO = 12
     LXB_CSS_PADDING_RIGHT__LENGTH = 20
     LXB_CSS_PADDING_RIGHT__PERCENTAGE = 21
@@ -4411,7 +5311,7 @@ end
 
 const lxb_css_padding_right_type_t = Cuint
 
-@cenum __JL_Ctag_152::UInt32 begin
+@cenum __JL_Ctag_70::UInt32 begin
     LXB_CSS_PADDING_TOP_AUTO = 12
     LXB_CSS_PADDING_TOP__LENGTH = 20
     LXB_CSS_PADDING_TOP__PERCENTAGE = 21
@@ -4419,7 +5319,7 @@ end
 
 const lxb_css_padding_top_type_t = Cuint
 
-@cenum __JL_Ctag_153::UInt32 begin
+@cenum __JL_Ctag_71::UInt32 begin
     LXB_CSS_POSITION_STATIC = 325
     LXB_CSS_POSITION_RELATIVE = 326
     LXB_CSS_POSITION_ABSOLUTE = 327
@@ -4429,7 +5329,7 @@ end
 
 const lxb_css_position_type_t = Cuint
 
-@cenum __JL_Ctag_154::UInt32 begin
+@cenum __JL_Ctag_72::UInt32 begin
     LXB_CSS_RIGHT_AUTO = 12
     LXB_CSS_RIGHT__LENGTH = 20
     LXB_CSS_RIGHT__PERCENTAGE = 21
@@ -4437,14 +5337,14 @@ end
 
 const lxb_css_right_type_t = Cuint
 
-@cenum __JL_Ctag_155::UInt32 begin
+@cenum __JL_Ctag_73::UInt32 begin
     LXB_CSS_TAB_SIZE__NUMBER = 264
     LXB_CSS_TAB_SIZE__LENGTH = 20
 end
 
 const lxb_css_tab_size_type_t = Cuint
 
-@cenum __JL_Ctag_156::UInt32 begin
+@cenum __JL_Ctag_74::UInt32 begin
     LXB_CSS_TEXT_ALIGN_START = 269
     LXB_CSS_TEXT_ALIGN_END = 270
     LXB_CSS_TEXT_ALIGN_LEFT = 47
@@ -4457,7 +5357,7 @@ end
 
 const lxb_css_text_align_type_t = Cuint
 
-@cenum __JL_Ctag_157::UInt32 begin
+@cenum __JL_Ctag_75::UInt32 begin
     LXB_CSS_TEXT_ALIGN_ALL_START = 269
     LXB_CSS_TEXT_ALIGN_ALL_END = 270
     LXB_CSS_TEXT_ALIGN_ALL_LEFT = 47
@@ -4469,7 +5369,7 @@ end
 
 const lxb_css_text_align_all_type_t = Cuint
 
-@cenum __JL_Ctag_158::UInt32 begin
+@cenum __JL_Ctag_76::UInt32 begin
     LXB_CSS_TEXT_ALIGN_LAST_AUTO = 12
     LXB_CSS_TEXT_ALIGN_LAST_START = 269
     LXB_CSS_TEXT_ALIGN_LAST_END = 270
@@ -4482,7 +5382,7 @@ end
 
 const lxb_css_text_align_last_type_t = Cuint
 
-@cenum __JL_Ctag_159::UInt32 begin
+@cenum __JL_Ctag_77::UInt32 begin
     LXB_CSS_TEXT_COMBINE_UPRIGHT_NONE = 31
     LXB_CSS_TEXT_COMBINE_UPRIGHT_ALL = 333
     LXB_CSS_TEXT_COMBINE_UPRIGHT_DIGITS = 334
@@ -4490,7 +5390,7 @@ end
 
 const lxb_css_text_combine_upright_type_t = Cuint
 
-@cenum __JL_Ctag_160::UInt32 begin
+@cenum __JL_Ctag_78::UInt32 begin
     LXB_CSS_TEXT_DECORATION_LINE_NONE = 31
     LXB_CSS_TEXT_DECORATION_LINE_UNDERLINE = 335
     LXB_CSS_TEXT_DECORATION_LINE_OVERLINE = 336
@@ -4500,7 +5400,7 @@ end
 
 const lxb_css_text_decoration_line_type_t = Cuint
 
-@cenum __JL_Ctag_161::UInt32 begin
+@cenum __JL_Ctag_79::UInt32 begin
     LXB_CSS_TEXT_DECORATION_STYLE_SOLID = 35
     LXB_CSS_TEXT_DECORATION_STYLE_DOUBLE = 36
     LXB_CSS_TEXT_DECORATION_STYLE_DOTTED = 33
@@ -4510,7 +5410,7 @@ end
 
 const lxb_css_text_decoration_style_type_t = Cuint
 
-@cenum __JL_Ctag_162::UInt32 begin
+@cenum __JL_Ctag_80::UInt32 begin
     LXB_CSS_TEXT_INDENT__LENGTH = 20
     LXB_CSS_TEXT_INDENT__PERCENTAGE = 21
     LXB_CSS_TEXT_INDENT_HANGING = 258
@@ -4519,7 +5419,7 @@ end
 
 const lxb_css_text_indent_type_t = Cuint
 
-@cenum __JL_Ctag_163::UInt32 begin
+@cenum __JL_Ctag_81::UInt32 begin
     LXB_CSS_TEXT_JUSTIFY_AUTO = 12
     LXB_CSS_TEXT_JUSTIFY_NONE = 31
     LXB_CSS_TEXT_JUSTIFY_INTER_WORD = 341
@@ -4528,7 +5428,7 @@ end
 
 const lxb_css_text_justify_type_t = Cuint
 
-@cenum __JL_Ctag_164::UInt32 begin
+@cenum __JL_Ctag_82::UInt32 begin
     LXB_CSS_TEXT_ORIENTATION_MIXED = 343
     LXB_CSS_TEXT_ORIENTATION_UPRIGHT = 344
     LXB_CSS_TEXT_ORIENTATION_SIDEWAYS = 345
@@ -4536,14 +5436,14 @@ end
 
 const lxb_css_text_orientation_type_t = Cuint
 
-@cenum __JL_Ctag_165::UInt32 begin
+@cenum __JL_Ctag_83::UInt32 begin
     LXB_CSS_TEXT_OVERFLOW_CLIP = 322
     LXB_CSS_TEXT_OVERFLOW_ELLIPSIS = 346
 end
 
 const lxb_css_text_overflow_type_t = Cuint
 
-@cenum __JL_Ctag_166::UInt32 begin
+@cenum __JL_Ctag_84::UInt32 begin
     LXB_CSS_TEXT_TRANSFORM_NONE = 31
     LXB_CSS_TEXT_TRANSFORM_CAPITALIZE = 347
     LXB_CSS_TEXT_TRANSFORM_UPPERCASE = 348
@@ -4554,7 +5454,7 @@ end
 
 const lxb_css_text_transform_type_t = Cuint
 
-@cenum __JL_Ctag_167::UInt32 begin
+@cenum __JL_Ctag_85::UInt32 begin
     LXB_CSS_TOP_AUTO = 12
     LXB_CSS_TOP__LENGTH = 20
     LXB_CSS_TOP__PERCENTAGE = 21
@@ -4562,7 +5462,7 @@ end
 
 const lxb_css_top_type_t = Cuint
 
-@cenum __JL_Ctag_168::UInt32 begin
+@cenum __JL_Ctag_86::UInt32 begin
     LXB_CSS_UNICODE_BIDI_NORMAL = 298
     LXB_CSS_UNICODE_BIDI_EMBED = 352
     LXB_CSS_UNICODE_BIDI_ISOLATE = 353
@@ -4573,14 +5473,14 @@ end
 
 const lxb_css_unicode_bidi_type_t = Cuint
 
-@cenum __JL_Ctag_169::UInt32 begin
+@cenum __JL_Ctag_87::UInt32 begin
     LXB_CSS_VERTICAL_ALIGN_FIRST = 26
     LXB_CSS_VERTICAL_ALIGN_LAST = 27
 end
 
 const lxb_css_vertical_align_type_t = Cuint
 
-@cenum __JL_Ctag_170::UInt32 begin
+@cenum __JL_Ctag_88::UInt32 begin
     LXB_CSS_VISIBILITY_VISIBLE = 321
     LXB_CSS_VISIBILITY_HIDDEN = 32
     LXB_CSS_VISIBILITY_COLLAPSE = 357
@@ -4588,7 +5488,7 @@ end
 
 const lxb_css_visibility_type_t = Cuint
 
-@cenum __JL_Ctag_171::UInt32 begin
+@cenum __JL_Ctag_89::UInt32 begin
     LXB_CSS_WHITE_SPACE_NORMAL = 298
     LXB_CSS_WHITE_SPACE_PRE = 358
     LXB_CSS_WHITE_SPACE_NOWRAP = 265
@@ -4599,7 +5499,7 @@ end
 
 const lxb_css_white_space_type_t = Cuint
 
-@cenum __JL_Ctag_172::UInt32 begin
+@cenum __JL_Ctag_90::UInt32 begin
     LXB_CSS_WIDTH_AUTO = 12
     LXB_CSS_WIDTH_MIN_CONTENT = 314
     LXB_CSS_WIDTH_MAX_CONTENT = 315
@@ -4611,7 +5511,7 @@ end
 
 const lxb_css_width_type_t = Cuint
 
-@cenum __JL_Ctag_173::UInt32 begin
+@cenum __JL_Ctag_91::UInt32 begin
     LXB_CSS_WORD_BREAK_NORMAL = 298
     LXB_CSS_WORD_BREAK_KEEP_ALL = 362
     LXB_CSS_WORD_BREAK_BREAK_ALL = 363
@@ -4620,14 +5520,14 @@ end
 
 const lxb_css_word_break_type_t = Cuint
 
-@cenum __JL_Ctag_174::UInt32 begin
+@cenum __JL_Ctag_92::UInt32 begin
     LXB_CSS_WORD_SPACING_NORMAL = 298
     LXB_CSS_WORD_SPACING__LENGTH = 20
 end
 
 const lxb_css_word_spacing_type_t = Cuint
 
-@cenum __JL_Ctag_175::UInt32 begin
+@cenum __JL_Ctag_93::UInt32 begin
     LXB_CSS_WORD_WRAP_NORMAL = 298
     LXB_CSS_WORD_WRAP_BREAK_WORD = 324
     LXB_CSS_WORD_WRAP_ANYWHERE = 320
@@ -4635,7 +5535,7 @@ end
 
 const lxb_css_word_wrap_type_t = Cuint
 
-@cenum __JL_Ctag_176::UInt32 begin
+@cenum __JL_Ctag_94::UInt32 begin
     LXB_CSS_WRAP_FLOW_AUTO = 12
     LXB_CSS_WRAP_FLOW_BOTH = 364
     LXB_CSS_WRAP_FLOW_START = 269
@@ -4647,14 +5547,14 @@ end
 
 const lxb_css_wrap_flow_type_t = Cuint
 
-@cenum __JL_Ctag_177::UInt32 begin
+@cenum __JL_Ctag_95::UInt32 begin
     LXB_CSS_WRAP_THROUGH_WRAP = 266
     LXB_CSS_WRAP_THROUGH_NONE = 31
 end
 
 const lxb_css_wrap_through_type_t = Cuint
 
-@cenum __JL_Ctag_178::UInt32 begin
+@cenum __JL_Ctag_96::UInt32 begin
     LXB_CSS_WRITING_MODE_HORIZONTAL_TB = 368
     LXB_CSS_WRITING_MODE_VERTICAL_RL = 369
     LXB_CSS_WRITING_MODE_VERTICAL_LR = 370
@@ -4664,7 +5564,7 @@ end
 
 const lxb_css_writing_mode_type_t = Cuint
 
-@cenum __JL_Ctag_179::UInt32 begin
+@cenum __JL_Ctag_97::UInt32 begin
     LXB_CSS_Z_INDEX_AUTO = 12
     LXB_CSS_Z_INDEX__INTEGER = 273
 end
@@ -4740,9 +5640,33 @@ struct lxb_css_property_padding_t
 end
 
 struct lxb_css_property_border_t
-    style::lxb_css_value_type_t
-    width::lxb_css_value_length_type_t
-    color::lxb_css_value_color_t
+    data::NTuple{144,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_property_border_t}, f::Symbol)
+    f === :style && return Ptr{lxb_css_value_type_t}(x + 0)
+    f === :width && return Ptr{lxb_css_value_length_type_t}(x + 8)
+    f === :color && return Ptr{lxb_css_value_color_t}(x + 32)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_property_border_t, f::Symbol)
+    r = Ref{lxb_css_property_border_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_property_border_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_property_border_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_property_border_t, private::Bool = false)
+    (:style, :width, :color, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 const lxb_css_property_border_top_t = lxb_css_property_border_t
@@ -4810,10 +5734,34 @@ struct lxb_css_property_text_justify_t
 end
 
 struct lxb_css_property_text_indent_t
-    length::lxb_css_value_length_percentage_t
-    type::lxb_css_text_indent_type_t
-    hanging::lxb_css_text_indent_type_t
-    each_line::lxb_css_text_indent_type_t
+    data::NTuple{40,UInt8}
+end
+
+function Base.getproperty(x::Ptr{lxb_css_property_text_indent_t}, f::Symbol)
+    f === :length && return Ptr{lxb_css_value_length_percentage_t}(x + 0)
+    f === :type && return Ptr{lxb_css_text_indent_type_t}(x + 24)
+    f === :hanging && return Ptr{lxb_css_text_indent_type_t}(x + 28)
+    f === :each_line && return Ptr{lxb_css_text_indent_type_t}(x + 32)
+    return getfield(x, f)
+end
+
+function Base.getproperty(x::lxb_css_property_text_indent_t, f::Symbol)
+    r = Ref{lxb_css_property_text_indent_t}(x)
+    ptr = Base.unsafe_convert(Ptr{lxb_css_property_text_indent_t}, r)
+    fptr = getproperty(ptr, f)
+    GC.@preserve r unsafe_load(fptr)
+end
+
+function Base.setproperty!(x::Ptr{lxb_css_property_text_indent_t}, f::Symbol, v)
+    unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_property_text_indent_t, private::Bool = false)
+    (:length, :type, :hanging, :each_line, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_property_white_space_t
@@ -4852,25 +5800,33 @@ struct lxb_css_property_hanging_punctuation_t
     last::lxb_css_hanging_punctuation_type_t
 end
 
-struct __JL_Ctag_272
+struct __JL_Ctag_106
     data::NTuple{16,UInt8}
 end
 
-function Base.getproperty(x::Ptr{__JL_Ctag_272}, f::Symbol)
+function Base.getproperty(x::Ptr{__JL_Ctag_106}, f::Symbol)
     f === :type && return Ptr{lxb_css_font_family_type_t}(x + 0)
     f === :str && return Ptr{lexbor_str_t}(x + 0)
     return getfield(x, f)
 end
 
-function Base.getproperty(x::__JL_Ctag_272, f::Symbol)
-    r = Ref{__JL_Ctag_272}(x)
-    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_272}, r)
+function Base.getproperty(x::__JL_Ctag_106, f::Symbol)
+    r = Ref{__JL_Ctag_106}(x)
+    ptr = Base.unsafe_convert(Ptr{__JL_Ctag_106}, r)
     fptr = getproperty(ptr, f)
     GC.@preserve r unsafe_load(fptr)
 end
 
-function Base.setproperty!(x::Ptr{__JL_Ctag_272}, f::Symbol, v)
+function Base.setproperty!(x::Ptr{__JL_Ctag_106}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::__JL_Ctag_106, private::Bool = false)
+    (:type, :str, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 struct lxb_css_property_family_name
@@ -4879,7 +5835,7 @@ end
 
 function Base.getproperty(x::Ptr{lxb_css_property_family_name}, f::Symbol)
     f === :generic && return Ptr{Bool}(x + 0)
-    f === :u && return Ptr{__JL_Ctag_272}(x + 8)
+    f === :u && return Ptr{__JL_Ctag_106}(x + 8)
     f === :next && return Ptr{Ptr{lxb_css_property_family_name_t}}(x + 24)
     f === :prev && return Ptr{Ptr{lxb_css_property_family_name_t}}(x + 32)
     return getfield(x, f)
@@ -4894,6 +5850,14 @@ end
 
 function Base.setproperty!(x::Ptr{lxb_css_property_family_name}, f::Symbol, v)
     unsafe_store!(getproperty(x, f), v)
+end
+
+function Base.propertynames(x::lxb_css_property_family_name, private::Bool = false)
+    (:generic, :u, :next, :prev, if private
+        fieldnames(typeof(x))
+    else
+        ()
+    end...)
 end
 
 const lxb_css_property_family_name_t = lxb_css_property_family_name
@@ -5103,6 +6067,11 @@ struct lxb_css_selector_anb_of_t
     of::Ptr{lxb_css_selector_list_t}
 end
 
+struct lxb_css_selector_contains_t
+    str::lexbor_str_t
+    insensitive::Bool
+end
+
 function lxb_css_selector_list_destroy_memory(list)
     @ccall liblexbor.lxb_css_selector_list_destroy_memory(
         list::Ptr{lxb_css_selector_list_t},
@@ -5170,15 +6139,16 @@ end
     LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_HAS = 3
     LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_IS = 4
     LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_LANG = 5
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NOT = 6
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_CHILD = 7
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_COL = 8
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_LAST_CHILD = 9
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_LAST_COL = 10
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_LAST_OF_TYPE = 11
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_OF_TYPE = 12
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_WHERE = 13
-    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION__LAST_ENTRY = 14
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_LEXBOR_CONTAINS = 6
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NOT = 7
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_CHILD = 8
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_COL = 9
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_LAST_CHILD = 10
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_LAST_COL = 11
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_LAST_OF_TYPE = 12
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_NTH_OF_TYPE = 13
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION_WHERE = 14
+    LXB_CSS_SELECTOR_PSEUDO_CLASS_FUNCTION__LAST_ENTRY = 15
 end
 
 @cenum lxb_css_selector_pseudo_element_id_t::UInt32 begin
@@ -5211,7 +6181,7 @@ function lxb_css_selectors_parse(parser, data, length)
     )::Ptr{lxb_css_selector_list_t}
 end
 
-@cenum __JL_Ctag_246::UInt32 begin
+@cenum __JL_Ctag_98::UInt32 begin
     LXB_CSS_SYNTAX_PARSER_ERROR_UNDEF = 0
     LXB_CSS_SYNTAX_PARSER_ERROR_EOINATRU = 1
     LXB_CSS_SYNTAX_PARSER_ERROR_EOINQURU = 2
@@ -5242,16 +6212,21 @@ function lxb_css_parser_destroy(parser, self_destroy)
     )::Ptr{lxb_css_parser_t}
 end
 
+function lxb_css_parser_status_noi(parser)
+    @ccall liblexbor.lxb_css_parser_status_noi(parser::Ptr{lxb_css_parser_t})::lxb_status_t
+end
+
 @cenum lxb_css_syntax_tokenizer_error_id_t::UInt32 begin
     LXB_CSS_SYNTAX_TOKENIZER_ERROR_UNEOF = 0
     LXB_CSS_SYNTAX_TOKENIZER_ERROR_EOINCO = 1
     LXB_CSS_SYNTAX_TOKENIZER_ERROR_EOINST = 2
     LXB_CSS_SYNTAX_TOKENIZER_ERROR_EOINUR = 3
-    LXB_CSS_SYNTAX_TOKENIZER_ERROR_QOINUR = 4
-    LXB_CSS_SYNTAX_TOKENIZER_ERROR_WRESINUR = 5
-    LXB_CSS_SYNTAX_TOKENIZER_ERROR_NEINST = 6
-    LXB_CSS_SYNTAX_TOKENIZER_ERROR_BACH = 7
-    LXB_CSS_SYNTAX_TOKENIZER_ERROR_BACOPO = 8
+    LXB_CSS_SYNTAX_TOKENIZER_ERROR_EOINES = 4
+    LXB_CSS_SYNTAX_TOKENIZER_ERROR_QOINUR = 5
+    LXB_CSS_SYNTAX_TOKENIZER_ERROR_WRESINUR = 6
+    LXB_CSS_SYNTAX_TOKENIZER_ERROR_NEINST = 7
+    LXB_CSS_SYNTAX_TOKENIZER_ERROR_BACH = 8
+    LXB_CSS_SYNTAX_TOKENIZER_ERROR_BACOPO = 9
 end
 
 struct lxb_css_syntax_tokenizer_error_t
@@ -5276,24 +6251,69 @@ struct lxb_css_selectors_pseudo_data_t
     id::Cuint
 end
 
-function lxb_dom_element_qualified_name(element, len)
-    @ccall liblexbor.lxb_dom_element_qualified_name(
-        element::Ptr{lxb_dom_element_t},
-        len::Ptr{Csize_t},
-    )::Ptr{lxb_char_t}
+@cenum lxb_selectors_opt_t::UInt32 begin
+    LXB_SELECTORS_OPT_DEFAULT = 0
+    LXB_SELECTORS_OPT_MATCH_ROOT = 2
+    LXB_SELECTORS_OPT_MATCH_FIRST = 4
 end
 
-function lxb_dom_element_first_attribute_noi(element)
-    @ccall liblexbor.lxb_dom_element_first_attribute_noi(
-        element::Ptr{lxb_dom_element_t},
-    )::Ptr{lxb_dom_attr_t}
+# typedef lxb_selectors_entry_t * ( * lxb_selectors_state_cb_f ) ( lxb_selectors_t * selectors , lxb_selectors_entry_t * entry )
+const lxb_selectors_state_cb_f = Ptr{Cvoid}
+
+struct lxb_selectors_entry
+    id::Csize_t
+    combinator::lxb_css_selector_combinator_t
+    selector::Ptr{lxb_css_selector_t}
+    node::Ptr{lxb_dom_node_t}
+    next::Ptr{Cvoid} # next::Ptr{lxb_selectors_entry_t}
+    prev::Ptr{Cvoid} # prev::Ptr{lxb_selectors_entry_t}
+    following::Ptr{Cvoid} # following::Ptr{lxb_selectors_entry_t}
+    nested::Ptr{Cvoid} # nested::Ptr{lxb_selectors_nested_t}
 end
 
-function lxb_dom_element_next_attribute_noi(attr)
-    @ccall liblexbor.lxb_dom_element_next_attribute_noi(
-        attr::Ptr{lxb_dom_attr_t},
-    )::Ptr{lxb_dom_attr_t}
+function Base.getproperty(x::lxb_selectors_entry, f::Symbol)
+    f === :next && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
+    f === :prev && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
+    f === :following && return Ptr{lxb_selectors_entry_t}(getfield(x, f))
+    f === :nested && return Ptr{lxb_selectors_nested_t}(getfield(x, f))
+    return getfield(x, f)
 end
+
+const lxb_selectors_entry_t = lxb_selectors_entry
+
+# typedef lxb_status_t ( * lxb_selectors_cb_f ) ( lxb_dom_node_t * node , lxb_css_selector_specificity_t spec , void * ctx )
+const lxb_selectors_cb_f = Ptr{Cvoid}
+
+struct lxb_selectors_nested
+    entry::Ptr{lxb_selectors_entry_t}
+    return_state::lxb_selectors_state_cb_f
+    cb::lxb_selectors_cb_f
+    ctx::Ptr{Cvoid}
+    root::Ptr{lxb_dom_node_t}
+    parent::Ptr{Cvoid} # parent::Ptr{lxb_selectors_nested_t}
+    first::Ptr{lxb_selectors_entry_t}
+    top::Ptr{lxb_selectors_entry_t}
+    index::Csize_t
+    forward::Bool
+end
+
+function Base.getproperty(x::lxb_selectors_nested, f::Symbol)
+    f === :parent && return Ptr{lxb_selectors_nested_t}(getfield(x, f))
+    return getfield(x, f)
+end
+
+const lxb_selectors_nested_t = lxb_selectors_nested
+
+struct lxb_selectors
+    state::lxb_selectors_state_cb_f
+    objs::Ptr{lexbor_dobject_t}
+    nested::Ptr{lexbor_dobject_t}
+    current::Ptr{lxb_selectors_nested_t}
+    options::lxb_selectors_opt_t
+    status::lxb_status_t
+end
+
+const lxb_selectors_t = lxb_selectors
 
 function lxb_selectors_create()
     @ccall liblexbor.lxb_selectors_create()::Ptr{lxb_selectors_t}
@@ -5336,137 +6356,5 @@ function lxb_selectors_opt_set_noi(selectors, opt)
         opt::lxb_selectors_opt_t,
     )::Cvoid
 end
-
-@cenum lxb_html_document_opt::UInt32 begin
-    LXB_HTML_DOCUMENT_OPT_UNDEF = 0
-    LXB_HTML_DOCUMENT_PARSE_WO_COPY = 1
-end
-
-function lxb_html_document_destroy(document)
-    @ccall liblexbor.lxb_html_document_destroy(
-        document::Ptr{lxb_html_document_t},
-    )::Ptr{lxb_html_document_t}
-end
-
-const lxb_html_tag_category_t = Cint
-
-@cenum lxb_html_tag_category::UInt32 begin
-    LXB_HTML_TAG_CATEGORY__UNDEF = 0
-    LXB_HTML_TAG_CATEGORY_ORDINARY = 1
-    LXB_HTML_TAG_CATEGORY_SPECIAL = 2
-    LXB_HTML_TAG_CATEGORY_FORMATTING = 4
-    LXB_HTML_TAG_CATEGORY_SCOPE = 8
-    LXB_HTML_TAG_CATEGORY_SCOPE_LIST_ITEM = 16
-    LXB_HTML_TAG_CATEGORY_SCOPE_BUTTON = 32
-    LXB_HTML_TAG_CATEGORY_SCOPE_TABLE = 64
-    LXB_HTML_TAG_CATEGORY_SCOPE_SELECT = 128
-end
-
-struct lxb_html_tag_fixname_t
-    name::Ptr{lxb_char_t}
-    len::Cuint
-end
-
-@cenum lxb_html_tree_insertion_position_t::UInt32 begin
-    LXB_HTML_TREE_INSERTION_POSITION_CHILD = 0
-    LXB_HTML_TREE_INSERTION_POSITION_BEFORE = 1
-end
-
-struct lxb_html_tree_template_insertion_t
-    mode::lxb_html_tree_insertion_mode_f
-end
-
-@cenum lxb_html_parser_state_t::UInt32 begin
-    LXB_HTML_PARSER_STATE_BEGIN = 0
-    LXB_HTML_PARSER_STATE_PROCESS = 1
-    LXB_HTML_PARSER_STATE_END = 2
-    LXB_HTML_PARSER_STATE_FRAGMENT_PROCESS = 3
-    LXB_HTML_PARSER_STATE_ERROR = 4
-end
-
-struct lxb_html_parser_t
-    tkz::Ptr{lxb_html_tokenizer_t}
-    tree::Ptr{lxb_html_tree_t}
-    original_tree::Ptr{lxb_html_tree_t}
-    root::Ptr{lxb_dom_node_t}
-    form::Ptr{lxb_dom_node_t}
-    state::lxb_html_parser_state_t
-    status::lxb_status_t
-    ref_count::Csize_t
-end
-
-function lxb_html_parser_create()
-    @ccall liblexbor.lxb_html_parser_create()::Ptr{lxb_html_parser_t}
-end
-
-function lxb_html_parser_init(parser)
-    @ccall liblexbor.lxb_html_parser_init(parser::Ptr{lxb_html_parser_t})::lxb_status_t
-end
-
-function lxb_html_parser_destroy(parser)
-    @ccall liblexbor.lxb_html_parser_destroy(
-        parser::Ptr{lxb_html_parser_t},
-    )::Ptr{lxb_html_parser_t}
-end
-
-function lxb_html_parse(parser, html, size)
-    @ccall liblexbor.lxb_html_parse(
-        parser::Ptr{lxb_html_parser_t},
-        html::Ptr{lxb_char_t},
-        size::Csize_t,
-    )::Ptr{lxb_html_document_t}
-end
-
-struct lxb_html_encoding_entry_t
-    name::Ptr{lxb_char_t}
-    _end::Ptr{lxb_char_t}
-end
-
-struct lxb_html_encoding_t
-    cache::lexbor_array_obj_t
-    result::lexbor_array_obj_t
-end
-
-const lxb_html_serialize_opt_t = Cint
-
-@cenum lxb_html_serialize_opt::UInt32 begin
-    LXB_HTML_SERIALIZE_OPT_UNDEF = 0
-    LXB_HTML_SERIALIZE_OPT_SKIP_WS_NODES = 1
-    LXB_HTML_SERIALIZE_OPT_SKIP_COMMENT = 2
-    LXB_HTML_SERIALIZE_OPT_RAW = 4
-    LXB_HTML_SERIALIZE_OPT_WITHOUT_CLOSING = 8
-    LXB_HTML_SERIALIZE_OPT_TAG_WITH_NS = 16
-    LXB_HTML_SERIALIZE_OPT_WITHOUT_TEXT_INDENT = 32
-    LXB_HTML_SERIALIZE_OPT_FULL_DOCTYPE = 64
-end
-
-# typedef lxb_status_t ( * lxb_html_serialize_cb_f ) ( const lxb_char_t * data , size_t len , void * ctx )
-const lxb_html_serialize_cb_f = Ptr{Cvoid}
-
-struct lxb_html_style_weak
-    value::Ptr{Cvoid}
-    sp::lxb_css_selector_specificity_t
-    next::Ptr{Cvoid} # next::Ptr{lxb_html_style_weak_t}
-end
-
-function Base.getproperty(x::lxb_html_style_weak, f::Symbol)
-    f === :next && return Ptr{lxb_html_style_weak_t}(getfield(x, f))
-    return getfield(x, f)
-end
-
-const lxb_html_style_weak_t = lxb_html_style_weak
-
-struct lxb_html_style_node_t
-    entry::lexbor_avl_node_t
-    weak::Ptr{lxb_html_style_weak_t}
-    sp::lxb_css_selector_specificity_t
-end
-
-@cenum lxb_html_element_style_opt_t::UInt32 begin
-    LXB_HTML_ELEMENT_OPT_UNDEF = 0
-end
-
-# typedef lxb_status_t ( * lxb_html_element_style_cb_f ) ( lxb_html_element_t * element , const lxb_css_rule_declaration_t * declr , void * ctx , lxb_css_selector_specificity_t spec , bool is_weak )
-const lxb_html_element_style_cb_f = Ptr{Cvoid}
 
 end # module

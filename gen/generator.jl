@@ -14,7 +14,11 @@ cd(@__DIR__) do
     args = Generators.get_default_args()
     push!(args, "-I$include_dir")
 
-    header_files = [joinpath(include_dir, "lexbor", "html", "html.h")]
+    header_files = [
+        joinpath(include_dir, "lexbor", "html", "html.h"),
+        joinpath(include_dir, "lexbor", "css", "css.h"),
+        joinpath(include_dir, "lexbor", "selectors", "selectors.h"),
+    ]
 
     ctx = Generators.create_context(header_files, args, options)
 
@@ -50,6 +54,7 @@ cd(@__DIR__) do
         # CSS:
         :lxb_css_parser_create,
         :lxb_css_parser_init,
+        :lxb_css_parser_status_noi,
         :lxb_selectors_create,
         :lxb_selectors_init,
         :lxb_selectors_opt_set_noi,
