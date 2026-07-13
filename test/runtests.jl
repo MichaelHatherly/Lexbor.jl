@@ -346,4 +346,64 @@ using AbstractTrees
             @test Lexbor.outer_html(div) == """<div k="v">t</div>"""
         end
     end
+
+    @testset "fragment parsing" begin
+        let doc = Lexbor.Document("<html><body></body></html>")
+            nodes = Lexbor.fragment(doc, "<li>a</li><li>b</li>")
+            @test length(nodes) == 2
+            @test all(Lexbor.is_element, nodes)
+            @test Lexbor.tag.(nodes) == [:li, :li]
+            @test all(n -> Lexbor.parent_node(n) === nothing, nodes)
+        end
+
+        let doc = Lexbor.Document("<html><body></body></html>")
+            nodes = Lexbor.fragment(doc, "text<b>bold</b>")
+            @test length(nodes) == 2
+            @test Lexbor.is_text(nodes[1])
+            @test Lexbor.text(nodes[1]) == "text"
+            @test Lexbor.is_element(nodes[2])
+            @test Lexbor.tag(nodes[2]) === :b
+            @test all(n -> Lexbor.parent_node(n) === nothing, nodes)
+        end
+
+        let doc = Lexbor.Document("<ul></ul>")
+            ul = only(Lexbor.query(doc, "ul"))
+            for n in Lexbor.fragment(doc, "<li>a</li><li>b</li>")
+                Lexbor.append_child!(ul, n)
+            end
+            @test Lexbor.outer_html(ul) == "<ul><li>a</li><li>b</li></ul>"
+            @test length(Lexbor.query(doc, "li")) == 2
+        end
+
+        let doc = Lexbor.Document("<html><body></body></html>")
+            nodes = Lexbor.fragment(doc, "<td>x</td>")
+            @test length(nodes) == 1
+            @test Lexbor.is_text(nodes[1])
+            @test Lexbor.text(nodes[1]) == "x"
+        end
+
+        let doc = Lexbor.Document("<table><tr></tr></table>")
+            tr = only(Lexbor.query(doc, "tr"))
+            nodes = Lexbor.fragment(doc, "<td>x</td>"; context = tr)
+            @test length(nodes) == 1
+            @test Lexbor.is_element(nodes[1])
+            @test Lexbor.tag(nodes[1]) === :td
+            @test Lexbor.outer_html(nodes[1]) == "<td>x</td>"
+        end
+
+        let doc = Lexbor.Document("<html><body></body></html>")
+            @test isempty(Lexbor.fragment(doc, ""))
+        end
+
+        let doc = Lexbor.Document("<p>hi</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.is_text(textnode)
+            @test_throws ArgumentError Lexbor.fragment(doc, "<li>a</li>"; context = textnode)
+        end
+
+        let doc1 = Lexbor.Document("<div></div>"), doc2 = Lexbor.Document("<div></div>")
+            ctx = Lexbor.body(doc2)
+            @test_throws ArgumentError Lexbor.fragment(doc1, "<li>a</li>"; context = ctx)
+        end
+    end
 end

@@ -22,6 +22,7 @@ export comment
 export create_comment
 export create_element
 export create_text
+export fragment
 export has_attribute
 export head
 export inner_html
@@ -616,6 +617,49 @@ function set_text!(node::Node, text::AbstractString)
             throw(LexborError("failed to set text content."))
     end
     return node
+end
+
+"""
+    fragment(document::Document, html; context::Node = body(document)) -> Vector{Node}
+
+Parse `html` as a fragment in the context of the `context` element and return the
+parsed top-level nodes, owned by `document` and detached from any tree.
+
+Parsing rules depend on `context`: the same `html` yields different nodes under
+different contexts (e.g. `<td>x</td>` produces a `<td>` element inside a table
+context but a bare text node under `<body>`). The default context is
+[`body`](@ref Lexbor.body).
+
+The returned nodes are ready to attach with [`append_child!`](@ref
+Lexbor.append_child!), [`insert_before!`](@ref Lexbor.insert_before!), or
+[`insert_after!`](@ref Lexbor.insert_after!). `context` must be an element belonging
+to `document`; otherwise `ArgumentError` is thrown.
+"""
+function fragment(
+    doc::Document,
+    html::AbstractString;
+    context::Union{Node,Nothing} = body(doc),
+)
+    context === nothing &&
+        throw(ArgumentError("document has no body element to use as a context."))
+    context.document === doc ||
+        throw(ArgumentError("context node belongs to a different document."))
+    is_element(context) ||
+        throw(ArgumentError("context must be an element node."))
+    GC.@preserve doc context begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(context.ptr)
+        root = LibLexbor.lxb_html_document_parse_fragment(doc.ptr, element, html, sizeof(html))
+        _is_null(root) && throw(LexborError("failed to parse fragment."))
+        nodes = Node[]
+        child = LibLexbor.lxb_dom_node_first_child_noi(root)
+        while !_is_null(child)
+            next = LibLexbor.lxb_dom_node_next_noi(child)
+            LibLexbor.lxb_dom_node_remove(child)
+            push!(nodes, Node(doc, child))
+            child = next
+        end
+        return nodes
+    end
 end
 
 #
