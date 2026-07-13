@@ -278,4 +278,72 @@ using AbstractTrees
             @test Lexbor.remove!(orphan) === orphan
         end
     end
+
+    @testset "attribute and text mutation" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            div = only(Lexbor.query(doc, "div"))
+
+            @test Lexbor.set_attribute!(div, "data-x", "1") === div
+            @test Lexbor.attribute(div, "data-x") == "1"
+            @test Lexbor.attributes(div) == Dict("id" => "ok", "data-x" => "1")
+            @test contains(Lexbor.outer_html(div), "data-x=\"1\"")
+
+            Lexbor.set_attribute!(div, "id", "new")
+            @test Lexbor.attribute(div, "id") == "new"
+        end
+
+        let doc = Lexbor.Document("<div></div>")
+            div = only(Lexbor.query(doc, "div"))
+            Lexbor.set_attribute!(div, "flag", nothing)
+            @test Lexbor.attribute(div, "flag") == ""
+            @test Lexbor.attributes(div)["flag"] == ""
+            @test Lexbor.has_attribute(div, "flag") === true
+            @test contains(Lexbor.outer_html(div), "flag=\"\"")
+        end
+
+        let doc = Lexbor.Document("""<div id="ok" data-x="1"></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.remove_attribute!(div, "data-x") === div
+            @test Lexbor.attribute(div, "data-x") === nothing
+            @test Lexbor.has_attribute(div, "data-x") === false
+            @test !contains(Lexbor.outer_html(div), "data-x")
+
+            @test Lexbor.remove_attribute!(div, "nope") === div
+            @test Lexbor.has_attribute(div, "nope") === false
+        end
+
+        let doc = Lexbor.Document("<p>hi</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.is_text(textnode)
+            @test_throws ArgumentError Lexbor.set_attribute!(textnode, "x", "1")
+            @test_throws ArgumentError Lexbor.remove_attribute!(textnode, "x")
+        end
+
+        let doc = Lexbor.Document("""<div><span>old</span></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.set_text!(div, "a < b & c") === div
+            @test isempty(Lexbor.query(doc, "span"))
+            @test Lexbor.outer_html(div) == "<div>a &lt; b &amp; c</div>"
+        end
+
+        let doc = Lexbor.Document("<p>hello</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.set_text!(textnode, "world") === textnode
+            @test Lexbor.text(textnode) == "world"
+        end
+
+        let doc = Lexbor.Document("<div><!--old--></div>")
+            cmt = first(only(Lexbor.query(doc, "div")))
+            @test Lexbor.is_comment(cmt)
+            @test Lexbor.set_text!(cmt, "new") === cmt
+            @test Lexbor.comment(cmt) == "new"
+        end
+
+        let doc = Lexbor.Document("<div></div>")
+            div = only(Lexbor.query(doc, "div"))
+            Lexbor.set_text!(Lexbor.set_attribute!(div, "k", "v"), "t")
+            @test Lexbor.attribute(div, "k") == "v"
+            @test Lexbor.outer_html(div) == """<div k="v">t</div>"""
+        end
+    end
 end

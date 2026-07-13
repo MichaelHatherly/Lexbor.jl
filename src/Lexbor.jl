@@ -34,6 +34,9 @@ export parent_node
 export prev_sibling
 export query
 export remove!
+export remove_attribute!
+export set_attribute!
+export set_text!
 export tag
 export text
 export title
@@ -545,6 +548,74 @@ function _same_document(a::Node, b::Node)
     a.document === b.document ||
         throw(ArgumentError("nodes belong to different documents."))
     return nothing
+end
+
+"""
+    set_attribute!(node::Node, name, value::Union{AbstractString,Nothing}) -> Node
+
+Set the `name` attribute of an element `node` to `value` and return `node`. An
+existing attribute is overwritten. Passing `nothing` sets an empty value
+(`name=""`), equivalent to passing an empty string; lexbor cannot store a truly
+valueless attribute. Throws `ArgumentError` when `node` is not an element.
+"""
+function set_attribute!(
+    node::Node,
+    name::AbstractString,
+    value::Union{AbstractString,Nothing},
+)
+    is_element(node) ||
+        throw(ArgumentError("cannot set an attribute on a non-element node."))
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        ptr = if value === nothing
+            LibLexbor.lxb_dom_element_set_attribute(element, name, sizeof(name), C_NULL, 0)
+        else
+            LibLexbor.lxb_dom_element_set_attribute(
+                element,
+                name,
+                sizeof(name),
+                value,
+                sizeof(value),
+            )
+        end
+        _is_null(ptr) && throw(LexborError("failed to set attribute."))
+    end
+    return node
+end
+
+"""
+    remove_attribute!(node::Node, name) -> Node
+
+Remove the `name` attribute from an element `node` and return `node`. Removing an
+absent attribute is a no-op. Throws `ArgumentError` when `node` is not an element.
+"""
+function remove_attribute!(node::Node, name::AbstractString)
+    is_element(node) ||
+        throw(ArgumentError("cannot remove an attribute from a non-element node."))
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        status = LibLexbor.lxb_dom_element_remove_attribute(element, name, sizeof(name))
+        status == LibLexbor.LXB_STATUS_OK ||
+            throw(LexborError("failed to remove attribute."))
+    end
+    return node
+end
+
+"""
+    set_text!(node::Node, text) -> Node
+
+Set the text content of `node` to `text` and return `node`. On an element this
+replaces all children with a single text node; markup characters in `text` are
+escaped on serialization. On a text node it replaces the text; on a comment node
+it replaces the comment content.
+"""
+function set_text!(node::Node, text::AbstractString)
+    GC.@preserve node begin
+        status = LibLexbor.lxb_dom_node_text_content_set(node.ptr, text, sizeof(text))
+        status == LibLexbor.LXB_STATUS_OK ||
+            throw(LexborError("failed to set text content."))
+    end
+    return node
 end
 
 #
