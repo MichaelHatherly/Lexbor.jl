@@ -16,6 +16,8 @@ export Node
 export Tree
 export attributes
 export comment
+export inner_html
+export outer_html
 export query
 export tag
 export text
@@ -231,6 +233,42 @@ function _attributes(node::Ptr{LibLexbor.lxb_dom_node_t})
 end
 
 _is_null(node::Ptr{T}) where {T} = node === Ptr{T}()
+
+#
+# Serialization:
+#
+
+"""
+    outer_html(node::Node) -> String
+    outer_html(document::Document) -> String
+
+Return the HTML serialization of the node and its descendants. For a text node
+the returned string is the escaped text; see [`inner_html`](@ref Lexbor.inner_html)
+for the descendants without the node itself.
+"""
+outer_html(node::Node) = _serialize(LibLexbor.lxb_html_serialize_tree_str, node)
+outer_html(doc::Document) = outer_html(Node(doc))
+
+"""
+    inner_html(node::Node) -> String
+    inner_html(document::Document) -> String
+
+Return the HTML serialization of the node's descendants only. For a leaf node
+the returned string is empty; see [`outer_html`](@ref Lexbor.outer_html) to include
+the node itself.
+"""
+inner_html(node::Node) = _serialize(LibLexbor.lxb_html_serialize_deep_str, node)
+inner_html(doc::Document) = inner_html(Node(doc))
+
+function _serialize(f, node::Node)
+    str = Ref(LibLexbor.lexbor_str_t(C_NULL, 0))
+    status = f(node.ptr, str)
+    status == LibLexbor.LXB_STATUS_OK || throw(LexborError("failed to serialize node."))
+    result = str[].data == C_NULL ? "" : unsafe_string(str[].data, str[].length)
+    mraw = unsafe_load(unsafe_load(node.ptr).owner_document).text
+    LibLexbor.lexbor_str_destroy(str, mraw, false)
+    return result
+end
 
 #
 # Query nodes:

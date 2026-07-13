@@ -74,4 +74,44 @@ using AbstractTrees
         @test get_div(doc, "div#ok") === node
         @test Lexbor.tag(get_div(doc, "span")) === :span
     end
+
+    @testset "serialization" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span><br></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.outer_html(div) == """<div id="ok"><span>test</span><br></div>"""
+            @test Lexbor.inner_html(div) == """<span>test</span><br>"""
+
+            br = only(Lexbor.query(doc, "br"))
+            @test Lexbor.inner_html(br) == ""
+
+            span = only(Lexbor.query(doc, "span"))
+            textnode = first(span)
+            @test Lexbor.is_text(textnode)
+            @test Lexbor.outer_html(textnode) == "test"
+            @test Lexbor.inner_html(textnode) == ""
+        end
+
+        let doc = Lexbor.Document("<p>a &amp; b &lt; c</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.outer_html(textnode) == "a &amp; b &lt; c"
+        end
+
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            expected = "<html><head></head><body><div id=\"ok\"><span>test</span></div></body></html>"
+            @test Lexbor.outer_html(doc) == expected
+            @test Lexbor.inner_html(doc) == expected
+
+            reparsed = Lexbor.Document(Lexbor.outer_html(doc))
+            div = only(Lexbor.query(reparsed, "div"))
+            @test Lexbor.attributes(div) == Dict("id" => "ok")
+            @test Lexbor.text(first(only(Lexbor.query(reparsed, "span")))) == "test"
+        end
+
+        let html = let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+                Lexbor.outer_html(doc)
+            end
+            GC.gc()
+            @test html == "<html><head></head><body><div id=\"ok\"><span>test</span></div></body></html>"
+        end
+    end
 end
