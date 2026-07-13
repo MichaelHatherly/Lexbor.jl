@@ -111,8 +111,10 @@ function Base.show(io::IO, node::Node)
 end
 
 function Base.iterate(iter::Node, state = LibLexbor.lxb_dom_node_first_child_noi(iter.ptr))
-    state == C_NULL && return nothing
-    return Node(iter, state), LibLexbor.lxb_dom_node_next_noi(state)
+    GC.@preserve iter begin
+        state == C_NULL && return nothing
+        return Node(iter, state), LibLexbor.lxb_dom_node_next_noi(state)
+    end
 end
 
 Base.eltype(::Type{Node}) = Node
@@ -136,7 +138,7 @@ end
 
 Base.show(io::IO, t::Tree) = AbstractTrees.print_tree(io, t.n)
 
-_node_type(node::Node) = unsafe_load(node.ptr).type
+_node_type(node::Node) = GC.@preserve node unsafe_load(node.ptr).type
 
 """
     is_comment(node::Node) -> Bool
@@ -173,7 +175,7 @@ is_text(node::Node) = _node_type(node) == LibLexbor.LXB_DOM_NODE_TYPE_TEXT
 Return the comment content of a node, or `nothing` when the node is not a valid
 comment node.
 """
-comment(node::Node) = is_comment(node) ? _content(node.ptr) : nothing
+comment(node::Node) = is_comment(node) ? GC.@preserve(node, _content(node.ptr)) : nothing
 
 """
     text(node) -> String | Nothing
@@ -181,7 +183,7 @@ comment(node::Node) = is_comment(node) ? _content(node.ptr) : nothing
 Return the text content of a node, or `nothing` when the node is not a valid
 text node.
 """
-text(node::Node) = is_text(node) ? _content(node.ptr) : nothing
+text(node::Node) = is_text(node) ? GC.@preserve(node, _content(node.ptr)) : nothing
 
 function _content(ptr::Ptr{LibLexbor.lxb_dom_node_t})
     len = Ref{Csize_t}(0)
@@ -194,7 +196,7 @@ end
 
 Return the element tag name, or `nothing` when it is not an element.
 """
-tag(node::Node) = is_element(node) ? _element_name(node.ptr) : nothing
+tag(node::Node) = is_element(node) ? GC.@preserve(node, _element_name(node.ptr)) : nothing
 
 function _element_name(ptr::Ptr{LibLexbor.lxb_dom_node_t})
     element = Ptr{LibLexbor.lxb_dom_element_t}(ptr)
@@ -213,7 +215,7 @@ end
 Return a `Dict` of all the attributes of a node, or `nothing` when it is not a
 valid element node.
 """
-attributes(node::Node) = is_element(node) ? _attributes(node.ptr) : nothing
+attributes(node::Node) = is_element(node) ? GC.@preserve(node, _attributes(node.ptr)) : nothing
 
 function _attributes(node::Ptr{LibLexbor.lxb_dom_node_t})
     element = Ptr{LibLexbor.lxb_dom_element_t}(node)
@@ -256,10 +258,12 @@ cases apart. `nothing` is also returned when `node` is not an element.
 """
 function attribute(node::Node, name::AbstractString)
     is_element(node) || return nothing
-    element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
-    len = Ref{Csize_t}(0)
-    ptr = LibLexbor.lxb_dom_element_get_attribute(element, name, sizeof(name), len)
-    return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        len = Ref{Csize_t}(0)
+        ptr = LibLexbor.lxb_dom_element_get_attribute(element, name, sizeof(name), len)
+        return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+    end
 end
 
 """
@@ -273,8 +277,10 @@ both for an absent attribute and for a present-but-valueless one.
 """
 function has_attribute(node::Node, name::AbstractString)
     is_element(node) || return false
-    element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
-    return LibLexbor.lxb_dom_element_has_attribute(element, name, sizeof(name))
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        return LibLexbor.lxb_dom_element_has_attribute(element, name, sizeof(name))
+    end
 end
 
 #
@@ -304,13 +310,15 @@ inner_html(node::Node) = _serialize(LibLexbor.lxb_html_serialize_deep_str, node)
 inner_html(doc::Document) = inner_html(Node(doc))
 
 function _serialize(f, node::Node)
-    str = Ref(LibLexbor.lexbor_str_t(C_NULL, 0))
-    status = f(node.ptr, str)
-    status == LibLexbor.LXB_STATUS_OK || throw(LexborError("failed to serialize node."))
-    result = str[].data == C_NULL ? "" : unsafe_string(str[].data, str[].length)
-    mraw = unsafe_load(unsafe_load(node.ptr).owner_document).text
-    LibLexbor.lexbor_str_destroy(str, mraw, false)
-    return result
+    GC.@preserve node begin
+        str = Ref(LibLexbor.lexbor_str_t(C_NULL, 0))
+        status = f(node.ptr, str)
+        status == LibLexbor.LXB_STATUS_OK || throw(LexborError("failed to serialize node."))
+        result = str[].data == C_NULL ? "" : unsafe_string(str[].data, str[].length)
+        mraw = unsafe_load(unsafe_load(node.ptr).owner_document).text
+        LibLexbor.lexbor_str_destroy(str, mraw, false)
+        return result
+    end
 end
 
 #
@@ -323,8 +331,10 @@ end
 Return the parent of `node`, or `nothing` when it has no parent.
 """
 function parent_node(node::Node)
-    ptr = LibLexbor.lxb_dom_node_parent_noi(node.ptr)
-    return _is_null(ptr) ? nothing : Node(node, ptr)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_parent_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
 end
 
 """
@@ -334,8 +344,10 @@ Return the next sibling of `node`, or `nothing` when it is the last child of its
 parent.
 """
 function next_sibling(node::Node)
-    ptr = LibLexbor.lxb_dom_node_next_noi(node.ptr)
-    return _is_null(ptr) ? nothing : Node(node, ptr)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_next_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
 end
 
 """
@@ -345,8 +357,10 @@ Return the previous sibling of `node`, or `nothing` when it is the first child o
 its parent.
 """
 function prev_sibling(node::Node)
-    ptr = LibLexbor.lxb_dom_node_prev_noi(node.ptr)
-    return _is_null(ptr) ? nothing : Node(node, ptr)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_prev_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
 end
 
 """
@@ -355,8 +369,10 @@ end
 Return the last child of `node`, or `nothing` when it has no children.
 """
 function last_child(node::Node)
-    ptr = LibLexbor.lxb_dom_node_last_child_noi(node.ptr)
-    return _is_null(ptr) ? nothing : Node(node, ptr)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_last_child_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
 end
 
 #
@@ -370,9 +386,11 @@ Return the text of the document's `<title>` element, or `nothing` when the
 document has no `<title>`.
 """
 function title(doc::Document)
-    len = Ref{Csize_t}(0)
-    ptr = LibLexbor.lxb_html_document_title(doc.ptr, len)
-    return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+    GC.@preserve doc begin
+        len = Ref{Csize_t}(0)
+        ptr = LibLexbor.lxb_html_document_title(doc.ptr, len)
+        return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+    end
 end
 
 """
@@ -381,8 +399,10 @@ end
 Return the document's `<head>` element, or `nothing` when it has none.
 """
 function head(doc::Document)
-    ptr = LibLexbor.lxb_html_document_head_element_noi(doc.ptr)
-    return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    GC.@preserve doc begin
+        ptr = LibLexbor.lxb_html_document_head_element_noi(doc.ptr)
+        return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
 end
 
 """
@@ -391,8 +411,10 @@ end
 Return the document's `<body>` element, or `nothing` when it has none.
 """
 function body(doc::Document)
-    ptr = LibLexbor.lxb_html_document_body_element_noi(doc.ptr)
-    return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    GC.@preserve doc begin
+        ptr = LibLexbor.lxb_html_document_body_element_noi(doc.ptr)
+        return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
 end
 
 #
@@ -483,7 +505,7 @@ function query(f, node::Node, selector::String; first = false, root = false)
     obj = _create_selector(selector; first, root)
 
     try
-        status = LibLexbor.lxb_selectors_find(
+        status = GC.@preserve node LibLexbor.lxb_selectors_find(
             obj.selectors,
             node.ptr,
             obj.list,
@@ -573,7 +595,7 @@ end
 Base.show(io::IO, m::Matcher) = print(io, "$(Matcher)($(repr(m.selector)))")
 
 function (matcher::Matcher)(f, node::Node)
-    LibLexbor.lxb_selectors_match_node(
+    GC.@preserve node matcher LibLexbor.lxb_selectors_match_node(
         matcher.selectors,
         node.ptr,
         matcher.list,
