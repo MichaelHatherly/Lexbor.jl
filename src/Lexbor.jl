@@ -465,7 +465,7 @@ function _create_selector(selector::String; first = false, root = false)
     end
 
     list = LibLexbor.lxb_css_selectors_parse(parser, selector, sizeof(selector))
-    if unsafe_load(parser).status != LibLexbor.LXB_STATUS_OK
+    if LibLexbor.lxb_css_parser_status_noi(parser) != LibLexbor.LXB_STATUS_OK
         LibLexbor.lxb_selectors_destroy(selectors, true)
         LibLexbor.lxb_css_parser_destroy(parser, true)
         LibLexbor.lxb_css_selector_list_destroy_memory(list)
