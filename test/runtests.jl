@@ -141,4 +141,26 @@ using AbstractTrees
             @test Lexbor.last_child(p) === nothing
         end
     end
+
+    @testset "attribute lookup" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.attribute(div, "id") == "ok"
+            @test Lexbor.attribute(div, "missing") === nothing
+            @test Lexbor.has_attribute(div, "id") === true
+            @test Lexbor.has_attribute(div, "missing") === false
+
+            span = only(Lexbor.query(doc, "span"))
+            textnode = first(span)
+            @test Lexbor.is_text(textnode)
+            @test Lexbor.attribute(textnode, "x") === nothing
+            @test Lexbor.has_attribute(textnode, "x") === false
+        end
+
+        let doc = open(Lexbor.Document, joinpath(fixtures, "template_input.html"))
+            n = only(Lexbor.query(doc, "template"))
+            @test Lexbor.attribute(n, "v-slot:avatar") === nothing
+            @test Lexbor.has_attribute(n, "v-slot:avatar") === true
+        end
+    end
 end

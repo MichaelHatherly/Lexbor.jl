@@ -14,8 +14,10 @@ export Document
 export Matcher
 export Node
 export Tree
+export attribute
 export attributes
 export comment
+export has_attribute
 export inner_html
 export last_child
 export next_sibling
@@ -237,6 +239,40 @@ function _attributes(node::Ptr{LibLexbor.lxb_dom_node_t})
 end
 
 _is_null(node::Ptr{T}) where {T} = node === Ptr{T}()
+
+"""
+    attribute(node::Node, name) -> String | nothing
+
+Return the value of the `name` attribute of an element `node`, or `nothing`.
+
+`nothing` is returned both when the attribute is absent and when it is present
+but valueless (e.g. `v-slot:avatar` in `<template v-slot:avatar>`), mirroring how
+[`attributes`](@ref Lexbor.attributes) represents valueless attributes with a
+`nothing` value. Use [`has_attribute`](@ref Lexbor.has_attribute) to tell the two
+cases apart. `nothing` is also returned when `node` is not an element.
+"""
+function attribute(node::Node, name::AbstractString)
+    is_element(node) || return nothing
+    element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+    len = Ref{Csize_t}(0)
+    ptr = LibLexbor.lxb_dom_element_get_attribute(element, name, sizeof(name), len)
+    return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+end
+
+"""
+    has_attribute(node::Node, name) -> Bool
+
+Return whether an element `node` has the `name` attribute, regardless of whether
+it has a value. Returns `false` when `node` is not an element.
+
+This disambiguates [`attribute`](@ref Lexbor.attribute), which returns `nothing`
+both for an absent attribute and for a present-but-valueless one.
+"""
+function has_attribute(node::Node, name::AbstractString)
+    is_element(node) || return false
+    element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+    return LibLexbor.lxb_dom_element_has_attribute(element, name, sizeof(name))
+end
 
 #
 # Serialization:
