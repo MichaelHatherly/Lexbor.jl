@@ -16,8 +16,10 @@ export Node
 export Tree
 export attribute
 export attributes
+export body
 export comment
 export has_attribute
+export head
 export inner_html
 export last_child
 export next_sibling
@@ -27,6 +29,7 @@ export prev_sibling
 export query
 export tag
 export text
+export title
 export is_comment
 export is_element
 export is_text
@@ -354,6 +357,42 @@ Return the last child of `node`, or `nothing` when it has no children.
 function last_child(node::Node)
     ptr = LibLexbor.lxb_dom_node_last_child_noi(node.ptr)
     return _is_null(ptr) ? nothing : Node(node, ptr)
+end
+
+#
+# Document accessors:
+#
+
+"""
+    title(document::Document) -> String | nothing
+
+Return the text of the document's `<title>` element, or `nothing` when the
+document has no `<title>`.
+"""
+function title(doc::Document)
+    len = Ref{Csize_t}(0)
+    ptr = LibLexbor.lxb_html_document_title(doc.ptr, len)
+    return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+end
+
+"""
+    head(document::Document) -> Node | nothing
+
+Return the document's `<head>` element, or `nothing` when it has none.
+"""
+function head(doc::Document)
+    ptr = LibLexbor.lxb_html_document_head_element_noi(doc.ptr)
+    return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+end
+
+"""
+    body(document::Document) -> Node | nothing
+
+Return the document's `<body>` element, or `nothing` when it has none.
+"""
+function body(doc::Document)
+    ptr = LibLexbor.lxb_html_document_body_element_noi(doc.ptr)
+    return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
 end
 
 #

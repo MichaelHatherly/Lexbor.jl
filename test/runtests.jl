@@ -163,4 +163,23 @@ using AbstractTrees
             @test Lexbor.has_attribute(n, "v-slot:avatar") === true
         end
     end
+
+    @testset "document accessors" begin
+        let doc = open(Lexbor.Document, joinpath(fixtures, "document-large.html"))
+            @test Lexbor.title(doc) == "HTML Standard"
+        end
+
+        let doc = Lexbor.Document("<p>x</p>")
+            @test Lexbor.title(doc) === nothing
+        end
+
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            @test Lexbor.tag(Lexbor.head(doc)) === :head
+            @test Lexbor.tag(Lexbor.body(doc)) === :body
+
+            div_from_body = only(Lexbor.query(Lexbor.body(doc), "div"))
+            div_from_doc = only(Lexbor.query(doc, "div"))
+            @test div_from_body == div_from_doc
+        end
+    end
 end
