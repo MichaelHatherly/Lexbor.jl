@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `parent_node`, `next_sibling`, `prev_sibling`, and `last_child` for node navigation. [#14]
 - Add `attribute` and `has_attribute` to look up a single element attribute. [#14]
 - Add `title`, `head`, and `body` document accessors. [#14]
+- Add `create_element`, `create_text`, `create_comment`, `append_child!`, `insert_before!`, `insert_after!`, and `remove!` for tree mutation. [#14]
+- Add `set_attribute!`, `remove_attribute!`, and `set_text!` to mutate attributes and text content. [#14]
+- Add `fragment` to parse an HTML string into detached nodes for insertion. [#14]
 
 ### Fixed
 

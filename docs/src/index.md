@@ -6,7 +6,8 @@ integrates with `AbstractTrees.jl` to provide an interface for traversing the
 HTML tree.
 
 The exposed parts of the library are HTML parsing, DOM querying, node
-navigation, attribute access, and HTML serialization.
+navigation, attribute access, HTML serialization, tree mutation, and fragment
+parsing.
 
 ## Usage
 
@@ -169,6 +170,57 @@ page = Lexbor.Document("<html><head><title>Example</title></head><body><p>Hi</p>
 Lexbor.title(page)
 Lexbor.head(page)
 Lexbor.body(page)
+```
+
+### Modifying documents
+
+Build up a document by creating nodes and attaching them.
+[`create_element`](@ref), [`create_text`](@ref), and [`create_comment`](@ref) make
+detached nodes; [`append_child!`](@ref), [`insert_before!`](@ref), and
+[`insert_after!`](@ref) attach them.
+
+```@repl usage
+mut = Lexbor.Document("<div id='content'></div>")
+container = only(Lexbor.query(mut, "#content"))
+para = Lexbor.create_element(mut, "p")
+Lexbor.append_child!(container, para)
+Lexbor.append_child!(para, Lexbor.create_text(mut, "Hello"))
+Lexbor.set_attribute!(para, "class", "greeting")
+Lexbor.outer_html(container)
+```
+
+[`set_text!`](@ref) replaces an element's content, [`remove_attribute!`](@ref)
+drops an attribute, and [`remove!`](@ref) unlinks a node from its parent.
+
+```@repl usage
+Lexbor.set_text!(para, "Goodbye")
+Lexbor.remove_attribute!(para, "class")
+Lexbor.outer_html(container)
+Lexbor.remove!(para)
+Lexbor.outer_html(container)
+```
+
+### Parsing fragments
+
+[`fragment`](@ref) parses an HTML string into detached nodes ready to attach with
+the same insertion functions.
+
+```@repl usage
+list = Lexbor.Document("<ul></ul>")
+ul = only(Lexbor.query(list, "ul"))
+items = Lexbor.fragment(list, "<li>one</li><li>two</li>"; context = ul)
+foreach(item -> Lexbor.append_child!(ul, item), items)
+Lexbor.outer_html(ul)
+```
+
+Parsing depends on the `context` element: a `<td>` is kept under a table row
+context but reduced to bare text under `<body>`.
+
+```@repl usage
+table = Lexbor.Document("<table><tr></tr></table>")
+row = only(Lexbor.query(table, "tr"))
+cell = only(Lexbor.fragment(table, "<td>cell</td>"; context = row))
+Lexbor.outer_html(cell)
 ```
 
 ## API
