@@ -5,8 +5,8 @@ This package provides a Julia interface to the
 integrates with `AbstractTrees.jl` to provide an interface for traversing the
 HTML tree.
 
-Currently the only exposed parts of the library are HTML parsing and DOM
-querying.
+The exposed parts of the library are HTML parsing, DOM querying, node
+navigation, attribute access, and HTML serialization.
 
 ## Usage
 
@@ -104,6 +104,71 @@ for node in AbstractTrees.PreOrderDFS(Lexbor.Node(doc))
         @show matched
     end
 end
+```
+
+### Navigating nodes
+
+Move around the tree relative to a given [`Node`](@ref). Each accessor returns a
+[`Node`](@ref) or `nothing` when there is no such node.
+
+```@repl usage
+div = only(Lexbor.query(doc, "div.callout"))
+link = only(Lexbor.query(doc, "a"))
+Lexbor.parent_node(link)
+Lexbor.next_sibling(link)
+Lexbor.prev_sibling(link)
+Lexbor.last_child(div)
+```
+
+The accessors are [`parent_node`](@ref), [`next_sibling`](@ref),
+[`prev_sibling`](@ref), and [`last_child`](@ref).
+
+### Attribute access
+
+Read a single attribute of an element with [`attribute`](@ref). It returns the
+value as a `String`, or `nothing` when the attribute is absent or present but
+valueless.
+
+```@repl usage
+Lexbor.attribute(link, "href")
+Lexbor.attribute(link, "target")
+```
+
+[`has_attribute`](@ref) tells an absent attribute apart from a valueless one.
+
+```@repl usage
+Lexbor.has_attribute(link, "href")
+Lexbor.has_attribute(link, "target")
+```
+
+Use [`attributes`](@ref) to read every attribute of an element as a `Dict`.
+
+```@repl usage
+Lexbor.attributes(link)
+```
+
+### Serializing documents
+
+Serialize a [`Node`](@ref) or [`Document`](@ref) back to HTML.
+[`outer_html`](@ref) includes the node itself; [`inner_html`](@ref) emits its
+descendants only.
+
+```@repl usage
+Lexbor.outer_html(div)
+Lexbor.inner_html(div)
+Lexbor.outer_html(doc)
+```
+
+### Document accessors
+
+Reach the standard parts of a parsed document with [`title`](@ref),
+[`head`](@ref), and [`body`](@ref).
+
+```@repl usage
+page = Lexbor.Document("<html><head><title>Example</title></head><body><p>Hi</p></body></html>")
+Lexbor.title(page)
+Lexbor.head(page)
+Lexbor.body(page)
 ```
 
 ## API

@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add low-level bindings for HTML serialization, node navigation, attribute lookup, and document accessors. [#14]
+- Add `outer_html` and `inner_html` to serialize a node or document back to HTML. [#14]
+- Add `parent_node`, `next_sibling`, `prev_sibling`, and `last_child` for node navigation. [#14]
+- Add `attribute` and `has_attribute` to look up a single element attribute. [#14]
+- Add `title`, `head`, and `body` document accessors. [#14]
+
+### Fixed
+
+- Fix potential use-after-free by rooting the owning document across C calls. [#14]
 
 ### Changed
 
