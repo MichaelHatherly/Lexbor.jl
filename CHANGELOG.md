@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Add low-level bindings for HTML serialization, node navigation, attribute lookup, and document accessors. [#14]
+
 ### Changed
 
 - Update to the lexbor v3 C API. Requires `lexbor_jll` v3. [#13]
