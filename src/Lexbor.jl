@@ -17,7 +17,11 @@ export Tree
 export attributes
 export comment
 export inner_html
+export last_child
+export next_sibling
 export outer_html
+export parent_node
+export prev_sibling
 export query
 export tag
 export text
@@ -268,6 +272,52 @@ function _serialize(f, node::Node)
     mraw = unsafe_load(unsafe_load(node.ptr).owner_document).text
     LibLexbor.lexbor_str_destroy(str, mraw, false)
     return result
+end
+
+#
+# Navigation:
+#
+
+"""
+    parent_node(node::Node) -> Node | nothing
+
+Return the parent of `node`, or `nothing` when it has no parent.
+"""
+function parent_node(node::Node)
+    ptr = LibLexbor.lxb_dom_node_parent_noi(node.ptr)
+    return _is_null(ptr) ? nothing : Node(node, ptr)
+end
+
+"""
+    next_sibling(node::Node) -> Node | nothing
+
+Return the next sibling of `node`, or `nothing` when it is the last child of its
+parent.
+"""
+function next_sibling(node::Node)
+    ptr = LibLexbor.lxb_dom_node_next_noi(node.ptr)
+    return _is_null(ptr) ? nothing : Node(node, ptr)
+end
+
+"""
+    prev_sibling(node::Node) -> Node | nothing
+
+Return the previous sibling of `node`, or `nothing` when it is the first child of
+its parent.
+"""
+function prev_sibling(node::Node)
+    ptr = LibLexbor.lxb_dom_node_prev_noi(node.ptr)
+    return _is_null(ptr) ? nothing : Node(node, ptr)
+end
+
+"""
+    last_child(node::Node) -> Node | nothing
+
+Return the last child of `node`, or `nothing` when it has no children.
+"""
+function last_child(node::Node)
+    ptr = LibLexbor.lxb_dom_node_last_child_noi(node.ptr)
+    return _is_null(ptr) ? nothing : Node(node, ptr)
 end
 
 #

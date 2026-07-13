@@ -114,4 +114,31 @@ using AbstractTrees
             @test html == "<html><head></head><body><div id=\"ok\"><span>test</span></div></body></html>"
         end
     end
+
+    @testset "navigation" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>a</span><b>b</b></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            span = only(Lexbor.query(doc, "span"))
+            b = only(Lexbor.query(doc, "b"))
+
+            @test Lexbor.parent_node(span) == div
+            @test Lexbor.tag(Lexbor.parent_node(span)) === :div
+            @test Lexbor.parent_node(Lexbor.Node(doc)) === nothing
+
+            @test Lexbor.next_sibling(span) == b
+            @test Lexbor.next_sibling(b) === nothing
+
+            @test Lexbor.prev_sibling(b) == span
+            @test Lexbor.prev_sibling(span) === nothing
+
+            @test Lexbor.last_child(div) == b
+            @test Lexbor.is_text(Lexbor.last_child(span))
+            @test Lexbor.text(Lexbor.last_child(span)) == "a"
+        end
+
+        let doc = Lexbor.Document("<p></p>")
+            p = only(Lexbor.query(doc, "p"))
+            @test Lexbor.last_child(p) === nothing
+        end
+    end
 end
