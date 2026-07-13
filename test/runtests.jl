@@ -182,4 +182,100 @@ using AbstractTrees
             @test div_from_body == div_from_doc
         end
     end
+
+    @testset "tree mutation" begin
+        let doc = Lexbor.Document("""<div id="root"></div>""")
+            el = Lexbor.create_element(doc, :p)
+            @test Lexbor.is_element(el)
+            @test Lexbor.tag(el) === :p
+
+            el2 = Lexbor.create_element(doc, "span")
+            @test Lexbor.tag(el2) === :span
+
+            txt = Lexbor.create_text(doc, "hello")
+            @test Lexbor.is_text(txt)
+            @test Lexbor.text(txt) == "hello"
+
+            cmt = Lexbor.create_comment(doc, "note")
+            @test Lexbor.is_comment(cmt)
+            @test Lexbor.comment(cmt) == "note"
+        end
+
+        let doc = Lexbor.Document("""<div id="root"></div>""")
+            root = only(Lexbor.query(doc, "div#root"))
+            el = Lexbor.create_element(doc, :p)
+            txt = Lexbor.create_text(doc, "hi")
+            @test Lexbor.append_child!(el, txt) === txt
+            @test Lexbor.append_child!(root, el) === el
+            @test Lexbor.outer_html(root) == """<div id="root"><p>hi</p></div>"""
+            @test Lexbor.tag(only(Lexbor.query(doc, "p"))) === :p
+        end
+
+        let doc = Lexbor.Document("""<ul><li id="b">b</li></ul>""")
+            ul = only(Lexbor.query(doc, "ul"))
+            anchor = only(Lexbor.query(doc, "li#b"))
+
+            a = Lexbor.create_element(doc, :li)
+            Lexbor.append_child!(a, Lexbor.create_text(doc, "a"))
+            c = Lexbor.create_element(doc, :li)
+            Lexbor.append_child!(c, Lexbor.create_text(doc, "c"))
+
+            @test Lexbor.insert_before!(anchor, a) === a
+            @test Lexbor.insert_after!(anchor, c) === c
+            @test Lexbor.outer_html(ul) ==
+                  """<ul><li>a</li><li id="b">b</li><li>c</li></ul>"""
+            @test Lexbor.prev_sibling(anchor) == a
+            @test Lexbor.next_sibling(anchor) == c
+        end
+
+        let doc = Lexbor.Document("""<div><span id="x">x</span><b>b</b></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            span = only(Lexbor.query(doc, "span#x"))
+            @test Lexbor.remove!(span) === span
+            @test Lexbor.outer_html(div) == "<div><b>b</b></div>"
+            @test isempty(Lexbor.query(doc, "span"))
+        end
+
+        let doc = Lexbor.Document(
+                """<div id="a"><span id="s">s</span></div><div id="b"></div>""",
+            )
+            a = only(Lexbor.query(doc, "div#a"))
+            b = only(Lexbor.query(doc, "div#b"))
+            span = only(Lexbor.query(doc, "span#s"))
+
+            Lexbor.remove!(span)
+            Lexbor.append_child!(b, span)
+            @test Lexbor.outer_html(a) == """<div id="a"></div>"""
+            @test Lexbor.outer_html(b) == """<div id="b"><span id="s">s</span></div>"""
+            @test length(Lexbor.query(doc, "span")) == 1
+        end
+
+        let doc = Lexbor.Document(
+                """<div id="a"><span id="s">s</span></div><div id="b"></div>""",
+            )
+            a = only(Lexbor.query(doc, "div#a"))
+            b = only(Lexbor.query(doc, "div#b"))
+            span = only(Lexbor.query(doc, "span#s"))
+
+            Lexbor.append_child!(b, span)
+            @test Lexbor.outer_html(a) == """<div id="a"></div>"""
+            @test Lexbor.outer_html(b) == """<div id="b"><span id="s">s</span></div>"""
+            @test length(Lexbor.query(doc, "span")) == 1
+        end
+
+        let doc1 = Lexbor.Document("""<div id="a"></div>"""),
+            doc2 = Lexbor.Document("""<div id="b"></div>""")
+
+            a = only(Lexbor.query(doc1, "div"))
+            el = Lexbor.create_element(doc2, :p)
+            @test_throws ArgumentError Lexbor.append_child!(a, el)
+            @test_throws ArgumentError Lexbor.insert_before!(a, el)
+            @test_throws ArgumentError Lexbor.insert_after!(a, el)
+        end
+
+        let doc = Lexbor.Document("<p></p>")
+            orphan = Lexbor.create_element(doc, :span)
+            @test Lexbor.remove!(orphan) === orphan
+        end
+    end
 end

@@ -14,19 +14,26 @@ export Document
 export Matcher
 export Node
 export Tree
+export append_child!
 export attribute
 export attributes
 export body
 export comment
+export create_comment
+export create_element
+export create_text
 export has_attribute
 export head
 export inner_html
+export insert_after!
+export insert_before!
 export last_child
 export next_sibling
 export outer_html
 export parent_node
 export prev_sibling
 export query
+export remove!
 export tag
 export text
 export title
@@ -415,6 +422,129 @@ function body(doc::Document)
         ptr = LibLexbor.lxb_html_document_body_element_noi(doc.ptr)
         return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
     end
+end
+
+#
+# Mutation:
+#
+
+"""
+    create_element(document::Document, tag::Union{Symbol,AbstractString}) -> Node
+
+Create a new element `Node` with the given `tag` name, owned by `document`. The
+node starts detached; attach it with [`append_child!`](@ref Lexbor.append_child!),
+[`insert_before!`](@ref Lexbor.insert_before!), or
+[`insert_after!`](@ref Lexbor.insert_after!).
+"""
+function create_element(doc::Document, tag::Union{Symbol,AbstractString})
+    name = String(tag)
+    GC.@preserve doc begin
+        ptr = LibLexbor.lxb_html_document_create_element_noi(
+            doc.ptr,
+            name,
+            sizeof(name),
+            C_NULL,
+        )
+        _is_null(ptr) && throw(LexborError("failed to create element."))
+        return Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    create_text(document::Document, text::AbstractString) -> Node
+
+Create a new text `Node` containing `text`, owned by `document`. The node starts
+detached; attach it with [`append_child!`](@ref Lexbor.append_child!) or a sibling
+insertion.
+"""
+function create_text(doc::Document, text::AbstractString)
+    GC.@preserve doc begin
+        document = Ptr{LibLexbor.lxb_dom_document_t}(doc.ptr)
+        ptr = LibLexbor.lxb_dom_document_create_text_node(document, text, sizeof(text))
+        _is_null(ptr) && throw(LexborError("failed to create text node."))
+        return Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    create_comment(document::Document, text::AbstractString) -> Node
+
+Create a new comment `Node` containing `text`, owned by `document`. The node
+starts detached; attach it with [`append_child!`](@ref Lexbor.append_child!) or a
+sibling insertion.
+"""
+function create_comment(doc::Document, text::AbstractString)
+    GC.@preserve doc begin
+        document = Ptr{LibLexbor.lxb_dom_document_t}(doc.ptr)
+        ptr = LibLexbor.lxb_dom_document_create_comment(document, text, sizeof(text))
+        _is_null(ptr) && throw(LexborError("failed to create comment node."))
+        return Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    append_child!(parent::Node, child::Node) -> Node
+
+Append `child` to `parent`'s children and return `child`. An already-attached
+`child` is moved, not copied. `parent` and `child` must belong to the same
+`Document`.
+"""
+function append_child!(parent::Node, child::Node)
+    _same_document(parent, child)
+    GC.@preserve parent child begin
+        LibLexbor.lxb_dom_node_remove(child.ptr)
+        LibLexbor.lxb_dom_node_insert_child(parent.ptr, child.ptr)
+    end
+    return child
+end
+
+"""
+    insert_before!(anchor::Node, node::Node) -> Node
+
+Insert `node` immediately before `anchor` among its siblings and return `node`.
+An already-attached `node` is moved. `anchor` and `node` must belong to the same
+`Document`.
+"""
+function insert_before!(anchor::Node, node::Node)
+    _same_document(anchor, node)
+    GC.@preserve anchor node begin
+        LibLexbor.lxb_dom_node_remove(node.ptr)
+        LibLexbor.lxb_dom_node_insert_before(anchor.ptr, node.ptr)
+    end
+    return node
+end
+
+"""
+    insert_after!(anchor::Node, node::Node) -> Node
+
+Insert `node` immediately after `anchor` among its siblings and return `node`.
+An already-attached `node` is moved. `anchor` and `node` must belong to the same
+`Document`.
+"""
+function insert_after!(anchor::Node, node::Node)
+    _same_document(anchor, node)
+    GC.@preserve anchor node begin
+        LibLexbor.lxb_dom_node_remove(node.ptr)
+        LibLexbor.lxb_dom_node_insert_after(anchor.ptr, node.ptr)
+    end
+    return node
+end
+
+"""
+    remove!(node::Node) -> Node
+
+Unlink `node` from its parent and return it. The node stays valid and can be
+re-inserted; its memory is owned by the `Document` and freed with it.
+"""
+function remove!(node::Node)
+    GC.@preserve node LibLexbor.lxb_dom_node_remove(node.ptr)
+    return node
+end
+
+function _same_document(a::Node, b::Node)
+    a.document === b.document ||
+        throw(ArgumentError("nodes belong to different documents."))
+    return nothing
 end
 
 #
