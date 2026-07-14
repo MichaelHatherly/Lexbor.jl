@@ -134,6 +134,13 @@ Base.IteratorSize(::Type{Node}) = Base.SizeUnknown()
 AbstractTrees.children(n::Node) = Iterators.map(identity, n)
 AbstractTrees.nodevalue(n::Node) = n
 
+AbstractTrees.ParentLinks(::Type{Node}) = AbstractTrees.StoredParents()
+AbstractTrees.parent(n::Node) = parent_node(n)
+
+AbstractTrees.SiblingLinks(::Type{Node}) = AbstractTrees.StoredSiblings()
+AbstractTrees.nextsibling(n::Node) = next_sibling(n)
+AbstractTrees.prevsibling(n::Node) = prev_sibling(n)
+
 """
     Tree(document)
     Tree(node)

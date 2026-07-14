@@ -142,6 +142,31 @@ using AbstractTrees
         end
     end
 
+    @testset "AbstractTrees interface" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>a</span><b>b</b></div>""")
+            root = Lexbor.Node(doc)
+            div = only(Lexbor.query(doc, "div"))
+            span = only(Lexbor.query(doc, "span"))
+            b = only(Lexbor.query(doc, "b"))
+
+            @test AbstractTrees.ParentLinks(Lexbor.Node) === AbstractTrees.StoredParents()
+            @test AbstractTrees.SiblingLinks(Lexbor.Node) === AbstractTrees.StoredSiblings()
+
+            @test AbstractTrees.parent(span) == div
+            @test AbstractTrees.parent(root) === nothing
+            @test AbstractTrees.nextsibling(span) == b
+            @test AbstractTrees.nextsibling(b) === nothing
+            @test AbstractTrees.prevsibling(b) == span
+            @test AbstractTrees.prevsibling(span) === nothing
+
+            @test AbstractTrees.getroot(span) == root
+            @test AbstractTrees.isroot(root)
+            @test !AbstractTrees.isroot(span)
+            @test AbstractTrees.isdescendant(span, root)
+            @test !AbstractTrees.isdescendant(root, span)
+        end
+    end
+
     @testset "attribute lookup" begin
         let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
             div = only(Lexbor.query(doc, "div"))

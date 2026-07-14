@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `create_element`, `create_text`, `create_comment`, `append_child!`, `insert_before!`, `insert_after!`, and `remove!` for tree mutation. [#14]
 - Add `set_attribute!`, `remove_attribute!`, and `set_text!` to mutate attributes and text content. [#14]
 - Add `fragment` to parse an HTML string into detached nodes for insertion. [#14]
+- Implement the `AbstractTrees` parent and sibling interface for `Node`, so `getroot`, `isroot`, and `isdescendant` work on DOM nodes. [#14]
 
 ### Fixed
 

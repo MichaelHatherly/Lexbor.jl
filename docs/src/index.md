@@ -124,6 +124,12 @@ Lexbor.last_child(div)
 The accessors are [`parent_node`](@ref), [`next_sibling`](@ref),
 [`prev_sibling`](@ref), and [`last_child`](@ref).
 
+[`Node`](@ref) implements the `AbstractTrees` parent and sibling interface, so
+generic tree utilities work on it directly: `AbstractTrees.getroot`,
+`AbstractTrees.isroot`, and `AbstractTrees.isdescendant`. The `parent_node`,
+`next_sibling`, and `prev_sibling` accessors back the `AbstractTrees.parent`,
+`nextsibling`, and `prevsibling` methods.
+
 ### Attribute access
 
 Read a single attribute of an element with [`attribute`](@ref). It returns the
