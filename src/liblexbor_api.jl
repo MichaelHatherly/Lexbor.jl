@@ -1176,6 +1176,14 @@ end
 # typedef bool ( * lexbor_bst_entry_f ) ( lexbor_bst_t * bst , lexbor_bst_entry_t * entry , void * ctx )
 const lexbor_bst_entry_f = Ptr{Cvoid}
 
+function lexbor_str_destroy(str, mraw, destroy_obj)
+    @ccall liblexbor.lexbor_str_destroy(
+        str::Ptr{lexbor_str_t},
+        mraw::Ptr{lexbor_mraw_t},
+        destroy_obj::Bool,
+    )::Ptr{lexbor_str_t}
+end
+
 # typedef uint32_t ( * lexbor_hash_id_f ) ( const lxb_char_t * key , size_t size )
 const lexbor_hash_id_f = Ptr{Cvoid}
 
@@ -1565,11 +1573,44 @@ const lxb_dom_node_descendants_f = Ptr{Cvoid}
 # typedef lxb_status_t ( * lxb_dom_node_cb_set_value_f ) ( lxb_dom_node_t * node , const lxb_char_t * value , size_t length )
 const lxb_dom_node_cb_set_value_f = Ptr{Cvoid}
 
+function lxb_dom_node_insert_child(to, node)
+    @ccall liblexbor.lxb_dom_node_insert_child(
+        to::Ptr{lxb_dom_node_t},
+        node::Ptr{lxb_dom_node_t},
+    )::Cvoid
+end
+
+function lxb_dom_node_insert_before(to, node)
+    @ccall liblexbor.lxb_dom_node_insert_before(
+        to::Ptr{lxb_dom_node_t},
+        node::Ptr{lxb_dom_node_t},
+    )::Cvoid
+end
+
+function lxb_dom_node_insert_after(to, node)
+    @ccall liblexbor.lxb_dom_node_insert_after(
+        to::Ptr{lxb_dom_node_t},
+        node::Ptr{lxb_dom_node_t},
+    )::Cvoid
+end
+
+function lxb_dom_node_remove(node)
+    @ccall liblexbor.lxb_dom_node_remove(node::Ptr{lxb_dom_node_t})::Cvoid
+end
+
 function lxb_dom_node_text_content(node, len)
     @ccall liblexbor.lxb_dom_node_text_content(
         node::Ptr{lxb_dom_node_t},
         len::Ptr{Csize_t},
     )::Ptr{lxb_char_t}
+end
+
+function lxb_dom_node_text_content_set(node, content, len)
+    @ccall liblexbor.lxb_dom_node_text_content_set(
+        node::Ptr{lxb_dom_node_t},
+        content::Ptr{lxb_char_t},
+        len::Csize_t,
+    )::lxb_status_t
 end
 
 function lxb_dom_node_next_noi(node)
@@ -1580,8 +1621,18 @@ function lxb_dom_node_prev_noi(node)
     @ccall liblexbor.lxb_dom_node_prev_noi(node::Ptr{lxb_dom_node_t})::Ptr{lxb_dom_node_t}
 end
 
+function lxb_dom_node_parent_noi(node)
+    @ccall liblexbor.lxb_dom_node_parent_noi(node::Ptr{lxb_dom_node_t})::Ptr{lxb_dom_node_t}
+end
+
 function lxb_dom_node_first_child_noi(node)
     @ccall liblexbor.lxb_dom_node_first_child_noi(
+        node::Ptr{lxb_dom_node_t},
+    )::Ptr{lxb_dom_node_t}
+end
+
+function lxb_dom_node_last_child_noi(node)
+    @ccall liblexbor.lxb_dom_node_last_child_noi(
         node::Ptr{lxb_dom_node_t},
     )::Ptr{lxb_dom_node_t}
 end
@@ -1837,6 +1888,41 @@ const lexbor_avl_t = lexbor_avl
 # typedef lxb_status_t ( * lexbor_avl_node_f ) ( lexbor_avl_t * avl , lexbor_avl_node_t * * root , lexbor_avl_node_t * node , void * ctx )
 const lexbor_avl_node_f = Ptr{Cvoid}
 
+function lxb_dom_element_set_attribute(element, qualified_name, qn_len, value, value_len)
+    @ccall liblexbor.lxb_dom_element_set_attribute(
+        element::Ptr{lxb_dom_element_t},
+        qualified_name::Ptr{lxb_char_t},
+        qn_len::Csize_t,
+        value::Ptr{lxb_char_t},
+        value_len::Csize_t,
+    )::Ptr{lxb_dom_attr_t}
+end
+
+function lxb_dom_element_get_attribute(element, qualified_name, qn_len, value_len)
+    @ccall liblexbor.lxb_dom_element_get_attribute(
+        element::Ptr{lxb_dom_element_t},
+        qualified_name::Ptr{lxb_char_t},
+        qn_len::Csize_t,
+        value_len::Ptr{Csize_t},
+    )::Ptr{lxb_char_t}
+end
+
+function lxb_dom_element_remove_attribute(element, qualified_name, qn_len)
+    @ccall liblexbor.lxb_dom_element_remove_attribute(
+        element::Ptr{lxb_dom_element_t},
+        qualified_name::Ptr{lxb_char_t},
+        qn_len::Csize_t,
+    )::lxb_status_t
+end
+
+function lxb_dom_element_has_attribute(element, qualified_name, qn_len)
+    @ccall liblexbor.lxb_dom_element_has_attribute(
+        element::Ptr{lxb_dom_element_t},
+        qualified_name::Ptr{lxb_char_t},
+        qn_len::Csize_t,
+    )::Bool
+end
+
 function lxb_dom_element_qualified_name(element, len)
     @ccall liblexbor.lxb_dom_element_qualified_name(
         element::Ptr{lxb_dom_element_t},
@@ -1861,6 +1947,22 @@ end
     LXB_DOM_DOCUMENT_OPT_WO_EVENTS = 1
 end
 
+function lxb_dom_document_create_text_node(document, data, len)
+    @ccall liblexbor.lxb_dom_document_create_text_node(
+        document::Ptr{lxb_dom_document_t},
+        data::Ptr{lxb_char_t},
+        len::Csize_t,
+    )::Ptr{lxb_dom_text_t}
+end
+
+function lxb_dom_document_create_comment(document, data, len)
+    @ccall liblexbor.lxb_dom_document_create_comment(
+        document::Ptr{lxb_dom_document_t},
+        data::Ptr{lxb_char_t},
+        len::Csize_t,
+    )::Ptr{lxb_dom_comment_t}
+end
+
 @cenum lxb_html_document_opt::UInt32 begin
     LXB_HTML_DOCUMENT_OPT_UNDEF = 0
 end
@@ -1869,6 +1971,48 @@ function lxb_html_document_destroy(document)
     @ccall liblexbor.lxb_html_document_destroy(
         document::Ptr{lxb_html_document_t},
     )::Ptr{lxb_html_document_t}
+end
+
+function lxb_html_document_parse_fragment(document, element, html, size)
+    @ccall liblexbor.lxb_html_document_parse_fragment(
+        document::Ptr{lxb_html_document_t},
+        element::Ptr{lxb_dom_element_t},
+        html::Ptr{lxb_char_t},
+        size::Csize_t,
+    )::Ptr{lxb_dom_node_t}
+end
+
+function lxb_html_document_title(document, len)
+    @ccall liblexbor.lxb_html_document_title(
+        document::Ptr{lxb_html_document_t},
+        len::Ptr{Csize_t},
+    )::Ptr{lxb_char_t}
+end
+
+function lxb_html_document_head_element_noi(document)
+    @ccall liblexbor.lxb_html_document_head_element_noi(
+        document::Ptr{lxb_html_document_t},
+    )::Ptr{lxb_html_head_element_t}
+end
+
+function lxb_html_document_body_element_noi(document)
+    @ccall liblexbor.lxb_html_document_body_element_noi(
+        document::Ptr{lxb_html_document_t},
+    )::Ptr{lxb_html_body_element_t}
+end
+
+function lxb_html_document_create_element_noi(
+    document,
+    local_name,
+    lname_len,
+    reserved_for_opt,
+)
+    @ccall liblexbor.lxb_html_document_create_element_noi(
+        document::Ptr{lxb_html_document_t},
+        local_name::Ptr{lxb_char_t},
+        lname_len::Csize_t,
+        reserved_for_opt::Ptr{Cvoid},
+    )::Ptr{lxb_html_element_t}
 end
 
 const lxb_html_tag_category_t = Cint
@@ -1965,6 +2109,20 @@ end
 
 # typedef lxb_status_t ( * lxb_html_serialize_cb_f ) ( const lxb_char_t * data , size_t len , void * ctx )
 const lxb_html_serialize_cb_f = Ptr{Cvoid}
+
+function lxb_html_serialize_tree_str(node, str)
+    @ccall liblexbor.lxb_html_serialize_tree_str(
+        node::Ptr{lxb_dom_node_t},
+        str::Ptr{lexbor_str_t},
+    )::lxb_status_t
+end
+
+function lxb_html_serialize_deep_str(node, str)
+    @ccall liblexbor.lxb_html_serialize_deep_str(
+        node::Ptr{lxb_dom_node_t},
+        str::Ptr{lexbor_str_t},
+    )::lxb_status_t
+end
 
 const lxb_html_serialize_ext_opt_t = Cuint
 

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Add `outer_html` and `inner_html` to serialize a node or document back to HTML. [#14]
+- Add `parent_node`, `next_sibling`, `prev_sibling`, and `last_child` for node navigation. [#14]
+- Add `attribute` and `has_attribute` to look up a single element attribute. [#14]
+- Add `title`, `head`, and `body` document accessors. [#14]
+- Add `create_element`, `create_text`, `create_comment`, `append_child!`, `insert_before!`, `insert_after!`, and `remove!` for tree mutation. [#14]
+- Add `set_attribute!`, `remove_attribute!`, and `set_text!` to mutate attributes and text content. [#14]
+- Add `fragment` to parse an HTML string into detached nodes for insertion. [#14]
+- Implement the `AbstractTrees` parent and sibling interface for `Node`, so `getroot`, `isroot`, and `isdescendant` work on DOM nodes. [#14]
+
+### Fixed
+
+- Fix potential use-after-free by rooting the owning document across C calls. [#14]
+
 ### Changed
 
 - Update to the lexbor v3 C API. Requires `lexbor_jll` v3. [#13]

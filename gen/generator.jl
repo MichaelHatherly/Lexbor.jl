@@ -25,8 +25,17 @@ cd(@__DIR__) do
     Generators.build!(ctx, Generators.BUILDSTAGE_NO_PRINTING)
 
     allowed_functions = Set([
+        # Core:
+        :lexbor_str_destroy,
         # HTML:
+        :lxb_html_serialize_deep_str,
+        :lxb_html_serialize_tree_str,
+        :lxb_html_document_title,
+        :lxb_html_document_head_element_noi,
+        :lxb_html_document_body_element_noi,
         :lxb_html_document_destroy,
+        :lxb_html_document_create_element_noi,
+        :lxb_html_document_parse_fragment,
         :lxb_html_tokenizer_tags_noi,
         :lxb_tag_name_by_id_noi,
         :lxb_html_tokenizer_destroy,
@@ -42,6 +51,10 @@ cd(@__DIR__) do
         :lxb_html_parse,
         :lxb_html_document_destroy,
         # DOM:
+        :lxb_dom_node_parent_noi,
+        :lxb_dom_node_last_child_noi,
+        :lxb_dom_element_get_attribute,
+        :lxb_dom_element_has_attribute,
         :lxb_dom_node_text_content,
         :lxb_dom_node_first_child_noi,
         :lxb_dom_node_next_noi,
@@ -51,6 +64,16 @@ cd(@__DIR__) do
         :lxb_dom_attr_value_noi,
         :lxb_dom_attr_qualified_name,
         :lxb_dom_element_next_attribute_noi,
+        # DOM mutation:
+        :lxb_dom_document_create_text_node,
+        :lxb_dom_document_create_comment,
+        :lxb_dom_node_insert_child,
+        :lxb_dom_node_insert_before,
+        :lxb_dom_node_insert_after,
+        :lxb_dom_node_remove,
+        :lxb_dom_node_text_content_set,
+        :lxb_dom_element_set_attribute,
+        :lxb_dom_element_remove_attribute,
         # CSS:
         :lxb_css_parser_create,
         :lxb_css_parser_init,

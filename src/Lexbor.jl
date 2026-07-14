@@ -14,11 +14,33 @@ export Document
 export Matcher
 export Node
 export Tree
+export append_child!
+export attribute
 export attributes
+export body
 export comment
+export create_comment
+export create_element
+export create_text
+export fragment
+export has_attribute
+export head
+export inner_html
+export insert_after!
+export insert_before!
+export last_child
+export next_sibling
+export outer_html
+export parent_node
+export prev_sibling
 export query
+export remove!
+export remove_attribute!
+export set_attribute!
+export set_text!
 export tag
 export text
+export title
 export is_comment
 export is_element
 export is_text
@@ -100,8 +122,10 @@ function Base.show(io::IO, node::Node)
 end
 
 function Base.iterate(iter::Node, state = LibLexbor.lxb_dom_node_first_child_noi(iter.ptr))
-    state == C_NULL && return nothing
-    return Node(iter, state), LibLexbor.lxb_dom_node_next_noi(state)
+    GC.@preserve iter begin
+        state == C_NULL && return nothing
+        return Node(iter, state), LibLexbor.lxb_dom_node_next_noi(state)
+    end
 end
 
 Base.eltype(::Type{Node}) = Node
@@ -109,6 +133,13 @@ Base.IteratorSize(::Type{Node}) = Base.SizeUnknown()
 
 AbstractTrees.children(n::Node) = Iterators.map(identity, n)
 AbstractTrees.nodevalue(n::Node) = n
+
+AbstractTrees.ParentLinks(::Type{Node}) = AbstractTrees.StoredParents()
+AbstractTrees.parent(n::Node) = parent_node(n)
+
+AbstractTrees.SiblingLinks(::Type{Node}) = AbstractTrees.StoredSiblings()
+AbstractTrees.nextsibling(n::Node) = next_sibling(n)
+AbstractTrees.prevsibling(n::Node) = prev_sibling(n)
 
 """
     Tree(document)
@@ -125,7 +156,7 @@ end
 
 Base.show(io::IO, t::Tree) = AbstractTrees.print_tree(io, t.n)
 
-_node_type(node::Node) = unsafe_load(node.ptr).type
+_node_type(node::Node) = GC.@preserve node unsafe_load(node.ptr).type
 
 """
     is_comment(node::Node) -> Bool
@@ -162,7 +193,7 @@ is_text(node::Node) = _node_type(node) == LibLexbor.LXB_DOM_NODE_TYPE_TEXT
 Return the comment content of a node, or `nothing` when the node is not a valid
 comment node.
 """
-comment(node::Node) = is_comment(node) ? _content(node.ptr) : nothing
+comment(node::Node) = is_comment(node) ? GC.@preserve(node, _content(node.ptr)) : nothing
 
 """
     text(node) -> String | Nothing
@@ -170,7 +201,7 @@ comment(node::Node) = is_comment(node) ? _content(node.ptr) : nothing
 Return the text content of a node, or `nothing` when the node is not a valid
 text node.
 """
-text(node::Node) = is_text(node) ? _content(node.ptr) : nothing
+text(node::Node) = is_text(node) ? GC.@preserve(node, _content(node.ptr)) : nothing
 
 function _content(ptr::Ptr{LibLexbor.lxb_dom_node_t})
     len = Ref{Csize_t}(0)
@@ -183,7 +214,7 @@ end
 
 Return the element tag name, or `nothing` when it is not an element.
 """
-tag(node::Node) = is_element(node) ? _element_name(node.ptr) : nothing
+tag(node::Node) = is_element(node) ? GC.@preserve(node, _element_name(node.ptr)) : nothing
 
 function _element_name(ptr::Ptr{LibLexbor.lxb_dom_node_t})
     element = Ptr{LibLexbor.lxb_dom_element_t}(ptr)
@@ -202,7 +233,7 @@ end
 Return a `Dict` of all the attributes of a node, or `nothing` when it is not a
 valid element node.
 """
-attributes(node::Node) = is_element(node) ? _attributes(node.ptr) : nothing
+attributes(node::Node) = is_element(node) ? GC.@preserve(node, _attributes(node.ptr)) : nothing
 
 function _attributes(node::Ptr{LibLexbor.lxb_dom_node_t})
     element = Ptr{LibLexbor.lxb_dom_element_t}(node)
@@ -231,6 +262,412 @@ function _attributes(node::Ptr{LibLexbor.lxb_dom_node_t})
 end
 
 _is_null(node::Ptr{T}) where {T} = node === Ptr{T}()
+
+"""
+    attribute(node::Node, name) -> String | nothing
+
+Return the value of the `name` attribute of an element `node`, or `nothing`.
+
+`nothing` is returned both when the attribute is absent and when it is present
+but valueless (e.g. `v-slot:avatar` in `<template v-slot:avatar>`), mirroring how
+[`attributes`](@ref Lexbor.attributes) represents valueless attributes with a
+`nothing` value. Use [`has_attribute`](@ref Lexbor.has_attribute) to tell the two
+cases apart. `nothing` is also returned when `node` is not an element.
+"""
+function attribute(node::Node, name::AbstractString)
+    is_element(node) || return nothing
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        len = Ref{Csize_t}(0)
+        ptr = LibLexbor.lxb_dom_element_get_attribute(element, name, sizeof(name), len)
+        return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+    end
+end
+
+"""
+    has_attribute(node::Node, name) -> Bool
+
+Return whether an element `node` has the `name` attribute, regardless of whether
+it has a value. Returns `false` when `node` is not an element.
+
+This disambiguates [`attribute`](@ref Lexbor.attribute), which returns `nothing`
+both for an absent attribute and for a present-but-valueless one.
+"""
+function has_attribute(node::Node, name::AbstractString)
+    is_element(node) || return false
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        return LibLexbor.lxb_dom_element_has_attribute(element, name, sizeof(name))
+    end
+end
+
+#
+# Serialization:
+#
+
+"""
+    outer_html(node::Node) -> String
+    outer_html(document::Document) -> String
+
+Return the HTML serialization of the node and its descendants. For a text node
+the returned string is the escaped text; see [`inner_html`](@ref Lexbor.inner_html)
+for the descendants without the node itself.
+"""
+outer_html(node::Node) = _serialize(LibLexbor.lxb_html_serialize_tree_str, node)
+outer_html(doc::Document) = outer_html(Node(doc))
+
+"""
+    inner_html(node::Node) -> String
+    inner_html(document::Document) -> String
+
+Return the HTML serialization of the node's descendants only. For a leaf node
+the returned string is empty; see [`outer_html`](@ref Lexbor.outer_html) to include
+the node itself.
+"""
+inner_html(node::Node) = _serialize(LibLexbor.lxb_html_serialize_deep_str, node)
+inner_html(doc::Document) = inner_html(Node(doc))
+
+function _serialize(f, node::Node)
+    GC.@preserve node begin
+        str = Ref(LibLexbor.lexbor_str_t(C_NULL, 0))
+        status = f(node.ptr, str)
+        status == LibLexbor.LXB_STATUS_OK || throw(LexborError("failed to serialize node."))
+        result = str[].data == C_NULL ? "" : unsafe_string(str[].data, str[].length)
+        mraw = unsafe_load(unsafe_load(node.ptr).owner_document).text
+        LibLexbor.lexbor_str_destroy(str, mraw, false)
+        return result
+    end
+end
+
+#
+# Navigation:
+#
+
+"""
+    parent_node(node::Node) -> Node | nothing
+
+Return the parent of `node`, or `nothing` when it has no parent.
+"""
+function parent_node(node::Node)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_parent_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
+end
+
+"""
+    next_sibling(node::Node) -> Node | nothing
+
+Return the next sibling of `node`, or `nothing` when it is the last child of its
+parent.
+"""
+function next_sibling(node::Node)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_next_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
+end
+
+"""
+    prev_sibling(node::Node) -> Node | nothing
+
+Return the previous sibling of `node`, or `nothing` when it is the first child of
+its parent.
+"""
+function prev_sibling(node::Node)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_prev_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
+end
+
+"""
+    last_child(node::Node) -> Node | nothing
+
+Return the last child of `node`, or `nothing` when it has no children.
+"""
+function last_child(node::Node)
+    GC.@preserve node begin
+        ptr = LibLexbor.lxb_dom_node_last_child_noi(node.ptr)
+        return _is_null(ptr) ? nothing : Node(node, ptr)
+    end
+end
+
+#
+# Document accessors:
+#
+
+"""
+    title(document::Document) -> String | nothing
+
+Return the text of the document's `<title>` element, or `nothing` when the
+document has no `<title>`.
+"""
+function title(doc::Document)
+    GC.@preserve doc begin
+        len = Ref{Csize_t}(0)
+        ptr = LibLexbor.lxb_html_document_title(doc.ptr, len)
+        return _is_null(ptr) ? nothing : unsafe_string(ptr, len[])
+    end
+end
+
+"""
+    head(document::Document) -> Node | nothing
+
+Return the document's `<head>` element, or `nothing` when it has none.
+"""
+function head(doc::Document)
+    GC.@preserve doc begin
+        ptr = LibLexbor.lxb_html_document_head_element_noi(doc.ptr)
+        return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    body(document::Document) -> Node | nothing
+
+Return the document's `<body>` element, or `nothing` when it has none.
+"""
+function body(doc::Document)
+    GC.@preserve doc begin
+        ptr = LibLexbor.lxb_html_document_body_element_noi(doc.ptr)
+        return _is_null(ptr) ? nothing : Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+#
+# Mutation:
+#
+
+"""
+    create_element(document::Document, tag::Union{Symbol,AbstractString}) -> Node
+
+Create a new element `Node` with the given `tag` name, owned by `document`. The
+node starts detached; attach it with [`append_child!`](@ref Lexbor.append_child!),
+[`insert_before!`](@ref Lexbor.insert_before!), or
+[`insert_after!`](@ref Lexbor.insert_after!).
+"""
+function create_element(doc::Document, tag::Union{Symbol,AbstractString})
+    name = String(tag)
+    GC.@preserve doc begin
+        ptr = LibLexbor.lxb_html_document_create_element_noi(
+            doc.ptr,
+            name,
+            sizeof(name),
+            C_NULL,
+        )
+        _is_null(ptr) && throw(LexborError("failed to create element."))
+        return Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    create_text(document::Document, text::AbstractString) -> Node
+
+Create a new text `Node` containing `text`, owned by `document`. The node starts
+detached; attach it with [`append_child!`](@ref Lexbor.append_child!) or a sibling
+insertion.
+"""
+function create_text(doc::Document, text::AbstractString)
+    GC.@preserve doc begin
+        document = Ptr{LibLexbor.lxb_dom_document_t}(doc.ptr)
+        ptr = LibLexbor.lxb_dom_document_create_text_node(document, text, sizeof(text))
+        _is_null(ptr) && throw(LexborError("failed to create text node."))
+        return Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    create_comment(document::Document, text::AbstractString) -> Node
+
+Create a new comment `Node` containing `text`, owned by `document`. The node
+starts detached; attach it with [`append_child!`](@ref Lexbor.append_child!) or a
+sibling insertion.
+"""
+function create_comment(doc::Document, text::AbstractString)
+    GC.@preserve doc begin
+        document = Ptr{LibLexbor.lxb_dom_document_t}(doc.ptr)
+        ptr = LibLexbor.lxb_dom_document_create_comment(document, text, sizeof(text))
+        _is_null(ptr) && throw(LexborError("failed to create comment node."))
+        return Node(doc, Ptr{LibLexbor.lxb_dom_node_t}(ptr))
+    end
+end
+
+"""
+    append_child!(parent::Node, child::Node) -> Node
+
+Append `child` to `parent`'s children and return `child`. An already-attached
+`child` is moved, not copied. `parent` and `child` must belong to the same
+`Document`.
+"""
+function append_child!(parent::Node, child::Node)
+    _same_document(parent, child)
+    GC.@preserve parent child begin
+        LibLexbor.lxb_dom_node_remove(child.ptr)
+        LibLexbor.lxb_dom_node_insert_child(parent.ptr, child.ptr)
+    end
+    return child
+end
+
+"""
+    insert_before!(anchor::Node, node::Node) -> Node
+
+Insert `node` immediately before `anchor` among its siblings and return `node`.
+An already-attached `node` is moved. `anchor` and `node` must belong to the same
+`Document`.
+"""
+function insert_before!(anchor::Node, node::Node)
+    _same_document(anchor, node)
+    GC.@preserve anchor node begin
+        LibLexbor.lxb_dom_node_remove(node.ptr)
+        LibLexbor.lxb_dom_node_insert_before(anchor.ptr, node.ptr)
+    end
+    return node
+end
+
+"""
+    insert_after!(anchor::Node, node::Node) -> Node
+
+Insert `node` immediately after `anchor` among its siblings and return `node`.
+An already-attached `node` is moved. `anchor` and `node` must belong to the same
+`Document`.
+"""
+function insert_after!(anchor::Node, node::Node)
+    _same_document(anchor, node)
+    GC.@preserve anchor node begin
+        LibLexbor.lxb_dom_node_remove(node.ptr)
+        LibLexbor.lxb_dom_node_insert_after(anchor.ptr, node.ptr)
+    end
+    return node
+end
+
+"""
+    remove!(node::Node) -> Node
+
+Unlink `node` from its parent and return it. The node stays valid and can be
+re-inserted; its memory is owned by the `Document` and freed with it.
+"""
+function remove!(node::Node)
+    GC.@preserve node LibLexbor.lxb_dom_node_remove(node.ptr)
+    return node
+end
+
+function _same_document(a::Node, b::Node)
+    a.document === b.document ||
+        throw(ArgumentError("nodes belong to different documents."))
+    return nothing
+end
+
+"""
+    set_attribute!(node::Node, name, value::Union{AbstractString,Nothing}) -> Node
+
+Set the `name` attribute of an element `node` to `value` and return `node`. An
+existing attribute is overwritten. Passing `nothing` sets an empty value
+(`name=""`), equivalent to passing an empty string; lexbor cannot store a truly
+valueless attribute. Throws `ArgumentError` when `node` is not an element.
+"""
+function set_attribute!(
+    node::Node,
+    name::AbstractString,
+    value::Union{AbstractString,Nothing},
+)
+    is_element(node) ||
+        throw(ArgumentError("cannot set an attribute on a non-element node."))
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        ptr = if value === nothing
+            LibLexbor.lxb_dom_element_set_attribute(element, name, sizeof(name), C_NULL, 0)
+        else
+            LibLexbor.lxb_dom_element_set_attribute(
+                element,
+                name,
+                sizeof(name),
+                value,
+                sizeof(value),
+            )
+        end
+        _is_null(ptr) && throw(LexborError("failed to set attribute."))
+    end
+    return node
+end
+
+"""
+    remove_attribute!(node::Node, name) -> Node
+
+Remove the `name` attribute from an element `node` and return `node`. Removing an
+absent attribute is a no-op. Throws `ArgumentError` when `node` is not an element.
+"""
+function remove_attribute!(node::Node, name::AbstractString)
+    is_element(node) ||
+        throw(ArgumentError("cannot remove an attribute from a non-element node."))
+    GC.@preserve node begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(node.ptr)
+        status = LibLexbor.lxb_dom_element_remove_attribute(element, name, sizeof(name))
+        status == LibLexbor.LXB_STATUS_OK ||
+            throw(LexborError("failed to remove attribute."))
+    end
+    return node
+end
+
+"""
+    set_text!(node::Node, text) -> Node
+
+Set the text content of `node` to `text` and return `node`. On an element this
+replaces all children with a single text node; markup characters in `text` are
+escaped on serialization. On a text node it replaces the text; on a comment node
+it replaces the comment content.
+"""
+function set_text!(node::Node, text::AbstractString)
+    GC.@preserve node begin
+        status = LibLexbor.lxb_dom_node_text_content_set(node.ptr, text, sizeof(text))
+        status == LibLexbor.LXB_STATUS_OK ||
+            throw(LexborError("failed to set text content."))
+    end
+    return node
+end
+
+"""
+    fragment(document::Document, html; context::Node = body(document)) -> Vector{Node}
+
+Parse `html` as a fragment in the context of the `context` element and return the
+parsed top-level nodes, owned by `document` and detached from any tree.
+
+Parsing rules depend on `context`: the same `html` yields different nodes under
+different contexts (e.g. `<td>x</td>` produces a `<td>` element inside a table
+context but a bare text node under `<body>`). The default context is
+[`body`](@ref Lexbor.body).
+
+The returned nodes are ready to attach with [`append_child!`](@ref
+Lexbor.append_child!), [`insert_before!`](@ref Lexbor.insert_before!), or
+[`insert_after!`](@ref Lexbor.insert_after!). `context` must be an element belonging
+to `document`; otherwise `ArgumentError` is thrown.
+"""
+function fragment(
+    doc::Document,
+    html::AbstractString;
+    context::Union{Node,Nothing} = body(doc),
+)
+    context === nothing &&
+        throw(ArgumentError("document has no body element to use as a context."))
+    context.document === doc ||
+        throw(ArgumentError("context node belongs to a different document."))
+    is_element(context) ||
+        throw(ArgumentError("context must be an element node."))
+    GC.@preserve doc context begin
+        element = Ptr{LibLexbor.lxb_dom_element_t}(context.ptr)
+        root = LibLexbor.lxb_html_document_parse_fragment(doc.ptr, element, html, sizeof(html))
+        _is_null(root) && throw(LexborError("failed to parse fragment."))
+        nodes = Node[]
+        child = LibLexbor.lxb_dom_node_first_child_noi(root)
+        while !_is_null(child)
+            next = LibLexbor.lxb_dom_node_next_noi(child)
+            LibLexbor.lxb_dom_node_remove(child)
+            push!(nodes, Node(doc, child))
+            child = next
+        end
+        return nodes
+    end
+end
 
 #
 # Query nodes:
@@ -320,7 +757,7 @@ function query(f, node::Node, selector::String; first = false, root = false)
     obj = _create_selector(selector; first, root)
 
     try
-        status = LibLexbor.lxb_selectors_find(
+        status = GC.@preserve node LibLexbor.lxb_selectors_find(
             obj.selectors,
             node.ptr,
             obj.list,
@@ -410,7 +847,7 @@ end
 Base.show(io::IO, m::Matcher) = print(io, "$(Matcher)($(repr(m.selector)))")
 
 function (matcher::Matcher)(f, node::Node)
-    LibLexbor.lxb_selectors_match_node(
+    GC.@preserve node matcher LibLexbor.lxb_selectors_match_node(
         matcher.selectors,
         node.ptr,
         matcher.list,

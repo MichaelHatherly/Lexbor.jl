@@ -74,4 +74,361 @@ using AbstractTrees
         @test get_div(doc, "div#ok") === node
         @test Lexbor.tag(get_div(doc, "span")) === :span
     end
+
+    @testset "serialization" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span><br></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.outer_html(div) == """<div id="ok"><span>test</span><br></div>"""
+            @test Lexbor.inner_html(div) == """<span>test</span><br>"""
+
+            br = only(Lexbor.query(doc, "br"))
+            @test Lexbor.inner_html(br) == ""
+
+            span = only(Lexbor.query(doc, "span"))
+            textnode = first(span)
+            @test Lexbor.is_text(textnode)
+            @test Lexbor.outer_html(textnode) == "test"
+            @test Lexbor.inner_html(textnode) == ""
+        end
+
+        let doc = Lexbor.Document("<p>a &amp; b &lt; c</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.outer_html(textnode) == "a &amp; b &lt; c"
+        end
+
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            expected = "<html><head></head><body><div id=\"ok\"><span>test</span></div></body></html>"
+            @test Lexbor.outer_html(doc) == expected
+            @test Lexbor.inner_html(doc) == expected
+
+            reparsed = Lexbor.Document(Lexbor.outer_html(doc))
+            div = only(Lexbor.query(reparsed, "div"))
+            @test Lexbor.attributes(div) == Dict("id" => "ok")
+            @test Lexbor.text(first(only(Lexbor.query(reparsed, "span")))) == "test"
+        end
+
+        let html = let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+                Lexbor.outer_html(doc)
+            end
+            GC.gc()
+            @test html == "<html><head></head><body><div id=\"ok\"><span>test</span></div></body></html>"
+        end
+    end
+
+    @testset "navigation" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>a</span><b>b</b></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            span = only(Lexbor.query(doc, "span"))
+            b = only(Lexbor.query(doc, "b"))
+
+            @test Lexbor.parent_node(span) == div
+            @test Lexbor.tag(Lexbor.parent_node(span)) === :div
+            @test Lexbor.parent_node(Lexbor.Node(doc)) === nothing
+
+            @test Lexbor.next_sibling(span) == b
+            @test Lexbor.next_sibling(b) === nothing
+
+            @test Lexbor.prev_sibling(b) == span
+            @test Lexbor.prev_sibling(span) === nothing
+
+            @test Lexbor.last_child(div) == b
+            @test Lexbor.is_text(Lexbor.last_child(span))
+            @test Lexbor.text(Lexbor.last_child(span)) == "a"
+        end
+
+        let doc = Lexbor.Document("<p></p>")
+            p = only(Lexbor.query(doc, "p"))
+            @test Lexbor.last_child(p) === nothing
+        end
+    end
+
+    @testset "AbstractTrees interface" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>a</span><b>b</b></div>""")
+            root = Lexbor.Node(doc)
+            div = only(Lexbor.query(doc, "div"))
+            span = only(Lexbor.query(doc, "span"))
+            b = only(Lexbor.query(doc, "b"))
+
+            @test AbstractTrees.ParentLinks(Lexbor.Node) === AbstractTrees.StoredParents()
+            @test AbstractTrees.SiblingLinks(Lexbor.Node) === AbstractTrees.StoredSiblings()
+
+            @test AbstractTrees.parent(span) == div
+            @test AbstractTrees.parent(root) === nothing
+            @test AbstractTrees.nextsibling(span) == b
+            @test AbstractTrees.nextsibling(b) === nothing
+            @test AbstractTrees.prevsibling(b) == span
+            @test AbstractTrees.prevsibling(span) === nothing
+
+            @test AbstractTrees.getroot(span) == root
+            @test AbstractTrees.isroot(root)
+            @test !AbstractTrees.isroot(span)
+            @test AbstractTrees.isdescendant(span, root)
+            @test !AbstractTrees.isdescendant(root, span)
+        end
+    end
+
+    @testset "attribute lookup" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.attribute(div, "id") == "ok"
+            @test Lexbor.attribute(div, "missing") === nothing
+            @test Lexbor.has_attribute(div, "id") === true
+            @test Lexbor.has_attribute(div, "missing") === false
+
+            span = only(Lexbor.query(doc, "span"))
+            textnode = first(span)
+            @test Lexbor.is_text(textnode)
+            @test Lexbor.attribute(textnode, "x") === nothing
+            @test Lexbor.has_attribute(textnode, "x") === false
+        end
+
+        let doc = open(Lexbor.Document, joinpath(fixtures, "template_input.html"))
+            n = only(Lexbor.query(doc, "template"))
+            @test Lexbor.attribute(n, "v-slot:avatar") === nothing
+            @test Lexbor.has_attribute(n, "v-slot:avatar") === true
+        end
+    end
+
+    @testset "document accessors" begin
+        let doc = open(Lexbor.Document, joinpath(fixtures, "document-large.html"))
+            @test Lexbor.title(doc) == "HTML Standard"
+        end
+
+        let doc = Lexbor.Document("<p>x</p>")
+            @test Lexbor.title(doc) === nothing
+        end
+
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            @test Lexbor.tag(Lexbor.head(doc)) === :head
+            @test Lexbor.tag(Lexbor.body(doc)) === :body
+
+            div_from_body = only(Lexbor.query(Lexbor.body(doc), "div"))
+            div_from_doc = only(Lexbor.query(doc, "div"))
+            @test div_from_body == div_from_doc
+        end
+    end
+
+    @testset "tree mutation" begin
+        let doc = Lexbor.Document("""<div id="root"></div>""")
+            el = Lexbor.create_element(doc, :p)
+            @test Lexbor.is_element(el)
+            @test Lexbor.tag(el) === :p
+
+            el2 = Lexbor.create_element(doc, "span")
+            @test Lexbor.tag(el2) === :span
+
+            txt = Lexbor.create_text(doc, "hello")
+            @test Lexbor.is_text(txt)
+            @test Lexbor.text(txt) == "hello"
+
+            cmt = Lexbor.create_comment(doc, "note")
+            @test Lexbor.is_comment(cmt)
+            @test Lexbor.comment(cmt) == "note"
+        end
+
+        let doc = Lexbor.Document("""<div id="root"></div>""")
+            root = only(Lexbor.query(doc, "div#root"))
+            el = Lexbor.create_element(doc, :p)
+            txt = Lexbor.create_text(doc, "hi")
+            @test Lexbor.append_child!(el, txt) === txt
+            @test Lexbor.append_child!(root, el) === el
+            @test Lexbor.outer_html(root) == """<div id="root"><p>hi</p></div>"""
+            @test Lexbor.tag(only(Lexbor.query(doc, "p"))) === :p
+        end
+
+        let doc = Lexbor.Document("""<ul><li id="b">b</li></ul>""")
+            ul = only(Lexbor.query(doc, "ul"))
+            anchor = only(Lexbor.query(doc, "li#b"))
+
+            a = Lexbor.create_element(doc, :li)
+            Lexbor.append_child!(a, Lexbor.create_text(doc, "a"))
+            c = Lexbor.create_element(doc, :li)
+            Lexbor.append_child!(c, Lexbor.create_text(doc, "c"))
+
+            @test Lexbor.insert_before!(anchor, a) === a
+            @test Lexbor.insert_after!(anchor, c) === c
+            @test Lexbor.outer_html(ul) ==
+                  """<ul><li>a</li><li id="b">b</li><li>c</li></ul>"""
+            @test Lexbor.prev_sibling(anchor) == a
+            @test Lexbor.next_sibling(anchor) == c
+        end
+
+        let doc = Lexbor.Document("""<div><span id="x">x</span><b>b</b></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            span = only(Lexbor.query(doc, "span#x"))
+            @test Lexbor.remove!(span) === span
+            @test Lexbor.outer_html(div) == "<div><b>b</b></div>"
+            @test isempty(Lexbor.query(doc, "span"))
+        end
+
+        let doc = Lexbor.Document(
+                """<div id="a"><span id="s">s</span></div><div id="b"></div>""",
+            )
+            a = only(Lexbor.query(doc, "div#a"))
+            b = only(Lexbor.query(doc, "div#b"))
+            span = only(Lexbor.query(doc, "span#s"))
+
+            Lexbor.remove!(span)
+            Lexbor.append_child!(b, span)
+            @test Lexbor.outer_html(a) == """<div id="a"></div>"""
+            @test Lexbor.outer_html(b) == """<div id="b"><span id="s">s</span></div>"""
+            @test length(Lexbor.query(doc, "span")) == 1
+        end
+
+        let doc = Lexbor.Document(
+                """<div id="a"><span id="s">s</span></div><div id="b"></div>""",
+            )
+            a = only(Lexbor.query(doc, "div#a"))
+            b = only(Lexbor.query(doc, "div#b"))
+            span = only(Lexbor.query(doc, "span#s"))
+
+            Lexbor.append_child!(b, span)
+            @test Lexbor.outer_html(a) == """<div id="a"></div>"""
+            @test Lexbor.outer_html(b) == """<div id="b"><span id="s">s</span></div>"""
+            @test length(Lexbor.query(doc, "span")) == 1
+        end
+
+        let doc1 = Lexbor.Document("""<div id="a"></div>"""),
+            doc2 = Lexbor.Document("""<div id="b"></div>""")
+
+            a = only(Lexbor.query(doc1, "div"))
+            el = Lexbor.create_element(doc2, :p)
+            @test_throws ArgumentError Lexbor.append_child!(a, el)
+            @test_throws ArgumentError Lexbor.insert_before!(a, el)
+            @test_throws ArgumentError Lexbor.insert_after!(a, el)
+        end
+
+        let doc = Lexbor.Document("<p></p>")
+            orphan = Lexbor.create_element(doc, :span)
+            @test Lexbor.remove!(orphan) === orphan
+        end
+    end
+
+    @testset "attribute and text mutation" begin
+        let doc = Lexbor.Document("""<div id="ok"><span>test</span></div>""")
+            div = only(Lexbor.query(doc, "div"))
+
+            @test Lexbor.set_attribute!(div, "data-x", "1") === div
+            @test Lexbor.attribute(div, "data-x") == "1"
+            @test Lexbor.attributes(div) == Dict("id" => "ok", "data-x" => "1")
+            @test contains(Lexbor.outer_html(div), "data-x=\"1\"")
+
+            Lexbor.set_attribute!(div, "id", "new")
+            @test Lexbor.attribute(div, "id") == "new"
+        end
+
+        let doc = Lexbor.Document("<div></div>")
+            div = only(Lexbor.query(doc, "div"))
+            Lexbor.set_attribute!(div, "flag", nothing)
+            @test Lexbor.attribute(div, "flag") == ""
+            @test Lexbor.attributes(div)["flag"] == ""
+            @test Lexbor.has_attribute(div, "flag") === true
+            @test contains(Lexbor.outer_html(div), "flag=\"\"")
+        end
+
+        let doc = Lexbor.Document("""<div id="ok" data-x="1"></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.remove_attribute!(div, "data-x") === div
+            @test Lexbor.attribute(div, "data-x") === nothing
+            @test Lexbor.has_attribute(div, "data-x") === false
+            @test !contains(Lexbor.outer_html(div), "data-x")
+
+            @test Lexbor.remove_attribute!(div, "nope") === div
+            @test Lexbor.has_attribute(div, "nope") === false
+        end
+
+        let doc = Lexbor.Document("<p>hi</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.is_text(textnode)
+            @test_throws ArgumentError Lexbor.set_attribute!(textnode, "x", "1")
+            @test_throws ArgumentError Lexbor.remove_attribute!(textnode, "x")
+        end
+
+        let doc = Lexbor.Document("""<div><span>old</span></div>""")
+            div = only(Lexbor.query(doc, "div"))
+            @test Lexbor.set_text!(div, "a < b & c") === div
+            @test isempty(Lexbor.query(doc, "span"))
+            @test Lexbor.outer_html(div) == "<div>a &lt; b &amp; c</div>"
+        end
+
+        let doc = Lexbor.Document("<p>hello</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.set_text!(textnode, "world") === textnode
+            @test Lexbor.text(textnode) == "world"
+        end
+
+        let doc = Lexbor.Document("<div><!--old--></div>")
+            cmt = first(only(Lexbor.query(doc, "div")))
+            @test Lexbor.is_comment(cmt)
+            @test Lexbor.set_text!(cmt, "new") === cmt
+            @test Lexbor.comment(cmt) == "new"
+        end
+
+        let doc = Lexbor.Document("<div></div>")
+            div = only(Lexbor.query(doc, "div"))
+            Lexbor.set_text!(Lexbor.set_attribute!(div, "k", "v"), "t")
+            @test Lexbor.attribute(div, "k") == "v"
+            @test Lexbor.outer_html(div) == """<div k="v">t</div>"""
+        end
+    end
+
+    @testset "fragment parsing" begin
+        let doc = Lexbor.Document("<html><body></body></html>")
+            nodes = Lexbor.fragment(doc, "<li>a</li><li>b</li>")
+            @test length(nodes) == 2
+            @test all(Lexbor.is_element, nodes)
+            @test Lexbor.tag.(nodes) == [:li, :li]
+            @test all(n -> Lexbor.parent_node(n) === nothing, nodes)
+        end
+
+        let doc = Lexbor.Document("<html><body></body></html>")
+            nodes = Lexbor.fragment(doc, "text<b>bold</b>")
+            @test length(nodes) == 2
+            @test Lexbor.is_text(nodes[1])
+            @test Lexbor.text(nodes[1]) == "text"
+            @test Lexbor.is_element(nodes[2])
+            @test Lexbor.tag(nodes[2]) === :b
+            @test all(n -> Lexbor.parent_node(n) === nothing, nodes)
+        end
+
+        let doc = Lexbor.Document("<ul></ul>")
+            ul = only(Lexbor.query(doc, "ul"))
+            for n in Lexbor.fragment(doc, "<li>a</li><li>b</li>")
+                Lexbor.append_child!(ul, n)
+            end
+            @test Lexbor.outer_html(ul) == "<ul><li>a</li><li>b</li></ul>"
+            @test length(Lexbor.query(doc, "li")) == 2
+        end
+
+        let doc = Lexbor.Document("<html><body></body></html>")
+            nodes = Lexbor.fragment(doc, "<td>x</td>")
+            @test length(nodes) == 1
+            @test Lexbor.is_text(nodes[1])
+            @test Lexbor.text(nodes[1]) == "x"
+        end
+
+        let doc = Lexbor.Document("<table><tr></tr></table>")
+            tr = only(Lexbor.query(doc, "tr"))
+            nodes = Lexbor.fragment(doc, "<td>x</td>"; context = tr)
+            @test length(nodes) == 1
+            @test Lexbor.is_element(nodes[1])
+            @test Lexbor.tag(nodes[1]) === :td
+            @test Lexbor.outer_html(nodes[1]) == "<td>x</td>"
+        end
+
+        let doc = Lexbor.Document("<html><body></body></html>")
+            @test isempty(Lexbor.fragment(doc, ""))
+        end
+
+        let doc = Lexbor.Document("<p>hi</p>")
+            textnode = first(only(Lexbor.query(doc, "p")))
+            @test Lexbor.is_text(textnode)
+            @test_throws ArgumentError Lexbor.fragment(doc, "<li>a</li>"; context = textnode)
+        end
+
+        let doc1 = Lexbor.Document("<div></div>"), doc2 = Lexbor.Document("<div></div>")
+            ctx = Lexbor.body(doc2)
+            @test_throws ArgumentError Lexbor.fragment(doc1, "<li>a</li>"; context = ctx)
+        end
+    end
 end

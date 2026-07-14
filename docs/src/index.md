@@ -5,8 +5,9 @@ This package provides a Julia interface to the
 integrates with `AbstractTrees.jl` to provide an interface for traversing the
 HTML tree.
 
-Currently the only exposed parts of the library are HTML parsing and DOM
-querying.
+The exposed parts of the library are HTML parsing, DOM querying, node
+navigation, attribute access, HTML serialization, tree mutation, and fragment
+parsing.
 
 ## Usage
 
@@ -104,6 +105,128 @@ for node in AbstractTrees.PreOrderDFS(Lexbor.Node(doc))
         @show matched
     end
 end
+```
+
+### Navigating nodes
+
+Move around the tree relative to a given [`Node`](@ref). Each accessor returns a
+[`Node`](@ref) or `nothing` when there is no such node.
+
+```@repl usage
+div = only(Lexbor.query(doc, "div.callout"))
+link = only(Lexbor.query(doc, "a"))
+Lexbor.parent_node(link)
+Lexbor.next_sibling(link)
+Lexbor.prev_sibling(link)
+Lexbor.last_child(div)
+```
+
+The accessors are [`parent_node`](@ref), [`next_sibling`](@ref),
+[`prev_sibling`](@ref), and [`last_child`](@ref).
+
+[`Node`](@ref) implements the `AbstractTrees` parent and sibling interface, so
+generic tree utilities work on it directly: `AbstractTrees.getroot`,
+`AbstractTrees.isroot`, and `AbstractTrees.isdescendant`. The `parent_node`,
+`next_sibling`, and `prev_sibling` accessors back the `AbstractTrees.parent`,
+`nextsibling`, and `prevsibling` methods.
+
+### Attribute access
+
+Read a single attribute of an element with [`attribute`](@ref). It returns the
+value as a `String`, or `nothing` when the attribute is absent or present but
+valueless.
+
+```@repl usage
+Lexbor.attribute(link, "href")
+Lexbor.attribute(link, "target")
+```
+
+[`has_attribute`](@ref) tells an absent attribute apart from a valueless one.
+
+```@repl usage
+Lexbor.has_attribute(link, "href")
+Lexbor.has_attribute(link, "target")
+```
+
+Use [`attributes`](@ref) to read every attribute of an element as a `Dict`.
+
+```@repl usage
+Lexbor.attributes(link)
+```
+
+### Serializing documents
+
+Serialize a [`Node`](@ref) or [`Document`](@ref) back to HTML.
+[`outer_html`](@ref) includes the node itself; [`inner_html`](@ref) emits its
+descendants only.
+
+```@repl usage
+Lexbor.outer_html(div)
+Lexbor.inner_html(div)
+Lexbor.outer_html(doc)
+```
+
+### Document accessors
+
+Reach the standard parts of a parsed document with [`title`](@ref),
+[`head`](@ref), and [`body`](@ref).
+
+```@repl usage
+page = Lexbor.Document("<html><head><title>Example</title></head><body><p>Hi</p></body></html>")
+Lexbor.title(page)
+Lexbor.head(page)
+Lexbor.body(page)
+```
+
+### Modifying documents
+
+Build up a document by creating nodes and attaching them.
+[`create_element`](@ref), [`create_text`](@ref), and [`create_comment`](@ref) make
+detached nodes; [`append_child!`](@ref), [`insert_before!`](@ref), and
+[`insert_after!`](@ref) attach them.
+
+```@repl usage
+mut = Lexbor.Document("<div id='content'></div>")
+container = only(Lexbor.query(mut, "#content"))
+para = Lexbor.create_element(mut, "p")
+Lexbor.append_child!(container, para)
+Lexbor.append_child!(para, Lexbor.create_text(mut, "Hello"))
+Lexbor.set_attribute!(para, "class", "greeting")
+Lexbor.outer_html(container)
+```
+
+[`set_text!`](@ref) replaces an element's content, [`remove_attribute!`](@ref)
+drops an attribute, and [`remove!`](@ref) unlinks a node from its parent.
+
+```@repl usage
+Lexbor.set_text!(para, "Goodbye")
+Lexbor.remove_attribute!(para, "class")
+Lexbor.outer_html(container)
+Lexbor.remove!(para)
+Lexbor.outer_html(container)
+```
+
+### Parsing fragments
+
+[`fragment`](@ref) parses an HTML string into detached nodes ready to attach with
+the same insertion functions.
+
+```@repl usage
+list = Lexbor.Document("<ul></ul>")
+ul = only(Lexbor.query(list, "ul"))
+items = Lexbor.fragment(list, "<li>one</li><li>two</li>"; context = ul)
+foreach(item -> Lexbor.append_child!(ul, item), items)
+Lexbor.outer_html(ul)
+```
+
+Parsing depends on the `context` element: a `<td>` is kept under a table row
+context but reduced to bare text under `<body>`.
+
+```@repl usage
+table = Lexbor.Document("<table><tr></tr></table>")
+row = only(Lexbor.query(table, "tr"))
+cell = only(Lexbor.fragment(table, "<td>cell</td>"; context = row))
+Lexbor.outer_html(cell)
 ```
 
 ## API
