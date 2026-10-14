@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Add `outer_html` and `inner_html` to serialize a node or document back to HTML. [#14]
+- Add `parent_node`, `next_sibling`, and `prev_sibling` for node navigation. [#14]
+- Add `first_child` and `last_child` to reach a node's children. [#14]
+- Add `first_element` and `last_element` to reach a node's first and last child elements. [#14]
+- Add `next_element` and `prev_element` to step between sibling elements, skipping text and comments. [#14]
+- Add `closest` to find the nearest inclusive ancestor matching a CSS selector. [#14]
+- Add `text_content` to read the text of a node and its descendants. [#14]
+- Add `attribute` and `has_attribute` to look up a single element attribute. [#14]
+- Add `title`, `head`, and `body` document accessors. [#14]
+- Add `document_element` to reach the root element, and `set_title!` to change the title. [#14]
+- Add `create_element`, `create_text`, and `create_comment` to build detached nodes. [#14]
+- Add `append_child!`, `insert_before!`, and `insert_after!` to attach nodes with DOM insertion rules, and `remove!` to detach them. [#14]
+- Add `replace_node!` to swap one node for another, and `set_inner_html!` to replace an element's children with parsed HTML. [#14]
+- Add `clone_node` and `import_node` to copy nodes within and across documents. [#14]
+- Add `set_attribute!`, `remove_attribute!`, and `set_text!` to mutate attributes and text content. [#14]
+- Add `fragment` to parse an HTML string into detached nodes for insertion. [#14]
+- Implement the `AbstractTrees` parent interface for `Node`, so `getroot`, `isroot`, and `isdescendant` work on DOM nodes. [#14]
+- Declare the added functions `public` on Julia 1.11+ without exporting them; call them qualified, e.g. `Lexbor.outer_html(node)`. [#14]
+
 ### Changed
 
 - Update to the lexbor v3 C API. Requires `lexbor_jll` v3. [#13]
