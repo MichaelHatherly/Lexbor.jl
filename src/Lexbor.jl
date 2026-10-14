@@ -144,8 +144,10 @@ function Base.show(io::IO, node::Node)
 end
 
 function Base.iterate(iter::Node, state = LibLexbor.lxb_dom_node_first_child_noi(iter.ptr))
-    state == C_NULL && return nothing
-    return Node(iter, state), LibLexbor.lxb_dom_node_next_noi(state)
+    GC.@preserve iter begin
+        state == C_NULL && return nothing
+        return Node(iter, state), LibLexbor.lxb_dom_node_next_noi(state)
+    end
 end
 
 Base.eltype(::Type{Node}) = Node
@@ -177,7 +179,7 @@ end
 
 Base.show(io::IO, t::Tree) = AbstractTrees.print_tree(io, t.n)
 
-_node_type(node::Node) = unsafe_load(node.ptr).type
+_node_type(node::Node) = GC.@preserve node unsafe_load(node.ptr).type
 
 """
     is_comment(node::Node) -> Bool
@@ -214,7 +216,7 @@ is_text(node::Node) = _node_type(node) == LibLexbor.LXB_DOM_NODE_TYPE_TEXT
 Return the comment content of a node, or `nothing` when the node is not a valid
 comment node.
 """
-comment(node::Node) = is_comment(node) ? _content(node.ptr) : nothing
+comment(node::Node) = is_comment(node) ? GC.@preserve(node, _content(node.ptr)) : nothing
 
 """
     text(node) -> String | Nothing
@@ -222,12 +224,16 @@ comment(node::Node) = is_comment(node) ? _content(node.ptr) : nothing
 Return the text content of a node, or `nothing` when the node is not a valid
 text node.
 """
-text(node::Node) = is_text(node) ? _content(node.ptr) : nothing
+text(node::Node) = is_text(node) ? GC.@preserve(node, _content(node.ptr)) : nothing
 
 function _content(ptr::Ptr{LibLexbor.lxb_dom_node_t})
     len = Ref{Csize_t}(0)
-    ptr = LibLexbor.lxb_dom_node_text_content(ptr, len)
-    return ptr == C_NULL ? nothing : unsafe_string(ptr, len[])
+    text = LibLexbor.lxb_dom_node_text_content(ptr, len)
+    _is_null(text) && return nothing
+    result = unsafe_string(text, len[])
+    # lexbor copies the text into the document's pool on every call.
+    LibLexbor.lxb_dom_document_destroy_text_noi(unsafe_load(ptr).owner_document, text)
+    return result
 end
 
 """
@@ -244,7 +250,7 @@ text_content(node::Node) = GC.@preserve node _content(node.ptr)
 
 Return the element tag name, or `nothing` when it is not an element.
 """
-tag(node::Node) = is_element(node) ? _element_name(node.ptr) : nothing
+tag(node::Node) = is_element(node) ? GC.@preserve(node, _element_name(node.ptr)) : nothing
 
 function _element_name(ptr::Ptr{LibLexbor.lxb_dom_node_t})
     element = Ptr{LibLexbor.lxb_dom_element_t}(ptr)
@@ -263,7 +269,7 @@ end
 Return a `Dict` of all the attributes of a node, or `nothing` when it is not a
 valid element node.
 """
-attributes(node::Node) = is_element(node) ? _attributes(node.ptr) : nothing
+attributes(node::Node) = is_element(node) ? GC.@preserve(node, _attributes(node.ptr)) : nothing
 
 function _attributes(node::Ptr{LibLexbor.lxb_dom_node_t})
     element = Ptr{LibLexbor.lxb_dom_element_t}(node)
@@ -941,7 +947,8 @@ end
 Query the `document` or `node` for the given CSS `selector`. When `f` is
 provided then call `f` on each match that is found and return `nothing` from
 `query`. When no `f` is provided then just return a `Vector{Node}` containing
-all matches.
+all matches. `f` is called once the search has finished, so it may modify the
+tree.
 
 The `first::Bool` keyword controls whether to only match the first of a
 selector list. To quote the upstream documentation:
@@ -1014,26 +1021,10 @@ struct CSSSelectorError <: Exception
     css::String
 end
 
-function query(f, node::Node, selector::String; first = false, root = false)
-    obj = _create_selector(selector; first, root)
-
-    try
-        status = LibLexbor.lxb_selectors_find(
-            obj.selectors,
-            node.ptr,
-            obj.list,
-            _c_each_query_callback(),
-            Ref(QueryContext(node.document, f)),
-        )
-        if status != LibLexbor.LXB_STATUS_OK
-            throw(LexborError("failed to find selectors."))
-        end
-    finally
-        LibLexbor.lxb_selectors_destroy(obj.selectors, true)
-        LibLexbor.lxb_css_parser_destroy(obj.parser, true)
-        LibLexbor.lxb_css_selector_list_destroy_memory(obj.list)
-    end
-
+# `f` runs after lexbor's search returns: the search walks the tree through the
+# same pointers that `f` could unlink, so calling `f` mid-search can segfault.
+function query(f, node::Node, selector::String; kws...)
+    foreach(f, query(node, selector; kws...))
     return nothing
 end
 query(f, doc::Document, selector::String; kws...) = query(f, Node(doc), selector; kws...)
@@ -1046,9 +1037,27 @@ end
 
 (cn::CollectNodes)(node::Node) = push!(cn.nodes, node)
 
-function query(node::Node, selector::String; kws...)
+function query(node::Node, selector::String; first = false, root = false)
     nodes = Node[]
-    query(CollectNodes(nodes), node, selector; kws...)
+    obj = _create_selector(selector; first, root)
+
+    try
+        status = GC.@preserve node LibLexbor.lxb_selectors_find(
+            obj.selectors,
+            node.ptr,
+            obj.list,
+            _c_each_query_callback(),
+            Ref(QueryContext(node.document, CollectNodes(nodes))),
+        )
+        if status != LibLexbor.LXB_STATUS_OK
+            throw(LexborError("failed to find selectors."))
+        end
+    finally
+        LibLexbor.lxb_selectors_destroy(obj.selectors, true)
+        LibLexbor.lxb_css_parser_destroy(obj.parser, true)
+        LibLexbor.lxb_css_selector_list_destroy_memory(obj.list)
+    end
+
     return nodes
 end
 query(doc::Document, selector::String; kws...) = query(Node(doc), selector; kws...)
@@ -1108,25 +1117,22 @@ end
 Base.show(io::IO, m::Matcher) = print(io, "$(Matcher)($(repr(m.selector)))")
 
 function (matcher::Matcher)(f, node::Node)
-    LibLexbor.lxb_selectors_match_node(
+    foreach(f, _matches(matcher, node))
+    return nothing
+end
+
+(matcher::Matcher)(node::Node) = !isempty(_matches(matcher, node))
+
+function _matches(matcher::Matcher, node::Node)
+    nodes = Node[]
+    GC.@preserve node matcher LibLexbor.lxb_selectors_match_node(
         matcher.selectors,
         node.ptr,
         matcher.list,
         _c_each_query_callback(),
-        Ref(QueryContext(node.document, f)),
+        Ref(QueryContext(node.document, CollectNodes(nodes))),
     )
-    return nothing
-end
-
-mutable struct IsMatch
-    value::Bool
-end
-(cn::IsMatch)(::Node) = cn.value = true
-
-function (matcher::Matcher)(node::Node)
-    is_match = IsMatch(false)
-    matcher(is_match, node)
-    return is_match.value
+    return nodes
 end
 
 """

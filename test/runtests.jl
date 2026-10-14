@@ -754,6 +754,26 @@ using AbstractTrees
         end
     end
 
+    @testset "mutation during matching" begin
+        let doc = Lexbor.Document("<p>a</p><p>b</p><p>c</p>")
+            Lexbor.query(doc, "p") do p
+                Lexbor.remove!(p)
+            end
+            @test isempty(Lexbor.query(doc, "p"))
+        end
+
+        let doc = Lexbor.Document("<p>a</p>")
+            p = only(Lexbor.query(doc, "p"))
+            seen = Lexbor.Node[]
+            Lexbor.Matcher("p")(p) do n
+                Lexbor.remove!(n)
+                push!(seen, n)
+            end
+            @test seen == [p]
+            @test Lexbor.parent_node(p) === nothing
+        end
+    end
+
     @testset "text replacement edge cases" begin
         let doc = Lexbor.Document("<p>x</p>")
             @test Lexbor.set_text!(Lexbor.Node(doc), "y") isa Lexbor.Node

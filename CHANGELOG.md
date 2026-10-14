@@ -28,9 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implement the `AbstractTrees` parent interface for `Node`, so `getroot`, `isroot`, and `isdescendant` work on DOM nodes. [#14]
 - Declare the added functions `public` on Julia 1.11+ without exporting them; call them qualified, e.g. `Lexbor.outer_html(node)`. [#14]
 
+### Fixed
+
+- Fix potential use-after-free by rooting the owning document across C calls. [#14]
+- Fix `text` and `comment` leaking a copy of the text into the document's memory on every call. [#14]
+
 ### Changed
 
 - Update to the lexbor v3 C API. Requires `lexbor_jll` v3. [#13]
+- Call the `query` and `Matcher` callbacks after the search finishes, so a callback can modify the tree without crashing the search. [#14]
 
 ## [v1.0.0] - 2024-12-31
 
